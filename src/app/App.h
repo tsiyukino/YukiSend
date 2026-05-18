@@ -127,7 +127,9 @@ private:
     struct InboundEntry {
         qint64  msgId;
         QString peerId;
-        int     refCount = 0; // number of active TCP connections for this entry
+        int     refCount  = 0;
+        bool    isFolder  = false;   // true when the offer was a Folder message
+        QString folderName;          // display name of the root folder (Folder transfers)
     };
     QHash<quintptr, InboundEntry *> m_inboundIdMap;  // tid → entry (not owned)
     QList<InboundEntry *>           m_pendingInbound; // ordered by Accept time (owned)

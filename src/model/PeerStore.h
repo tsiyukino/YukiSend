@@ -13,7 +13,7 @@
 class PeerStore : public QObject {
     Q_OBJECT
 public:
-    explicit PeerStore(QObject *parent = nullptr);
+    explicit PeerStore(const QString &dir, QObject *parent = nullptr);
     ~PeerStore() override;
 
     // Save or unsave a peer. Saving stores name/address/port for offline display.

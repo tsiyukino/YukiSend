@@ -3,17 +3,10 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <QStandardPaths>
 #include <QDir>
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QDebug>
-
-static const QString kDbPath = []() -> QString {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dir);
-    return dir + QStringLiteral("/yukisend.db");
-}();
 
 struct OutboxStore::Private {
     QSqlDatabase db;
@@ -31,12 +24,15 @@ struct OutboxStore::Private {
     }
 };
 
-OutboxStore::OutboxStore(QObject *parent)
+OutboxStore::OutboxStore(const QString &dir, QObject *parent)
     : QObject(parent), d(new Private)
 {
+    QDir().mkpath(dir);
+    const QString dbPath = dir + QStringLiteral("/yukisend.db");
+
     d->db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
                                       QStringLiteral("outboxstore"));
-    d->db.setDatabaseName(kDbPath);
+    d->db.setDatabaseName(dbPath);
     if (!d->db.open()) {
         qWarning() << "OutboxStore: cannot open db:" << d->db.lastError().text();
         return;

@@ -12,12 +12,12 @@
 enum class StorageStrategy { SessionOnly, Persistent };
 
 // Owns the SQLite database for all chat history.
-// One database file: <AppDataLocation>/yukisend.db
+// One database file: <dir>/yukisend.db  (dir defaults to AppDataLocation)
 // Thread: must be used from the same thread it was created on (main thread).
 class ChatStore : public QObject {
     Q_OBJECT
 public:
-    explicit ChatStore(QObject *parent = nullptr);
+    explicit ChatStore(const QString &dir, QObject *parent = nullptr);
     ~ChatStore() override;
 
     // Strategy ────────────────────────────────────────────────────────────────

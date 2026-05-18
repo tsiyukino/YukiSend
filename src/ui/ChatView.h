@@ -9,6 +9,7 @@
 #include "model/Message.h"
 #include "network/Discovery.h"
 #include "MessageDelegate.h"  // also brings in TextSelection
+#include "FolderTreeState.h"
 #include "Animator.h"
 
 // Scrollable chat message list for a single peer conversation.
@@ -66,9 +67,18 @@ private:
     int                       m_scrollOffset = 0;
     int                       m_hoverIndex   = -1;
     int                       m_hoverX       = -1;
+    int                       m_hoverY       = -1;
 
     MessageDelegateRenderer   m_delegate;
     MediaViewer              *m_viewer = nullptr; // child widget, lazy-created
+
+    // Folder tree states, keyed by message id.
+    // Lazily initialised when a Folder message's filePath becomes known.
+    QHash<qint64, FolderTreeState> m_treestates;
+
+    // Returns a pointer to the tree for msg, initialising it if filePath is set.
+    // Returns nullptr for non-Folder messages or when filePath is not yet available.
+    FolderTreeState *treeFor(const Message &msg);
 
     // Text selection state
     int            m_selMsgIdx  = -1;  // index into m_messages, -1 = none

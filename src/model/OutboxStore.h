@@ -22,7 +22,7 @@ struct OutboxEntry {
 class OutboxStore : public QObject {
     Q_OBJECT
 public:
-    explicit OutboxStore(QObject *parent = nullptr);
+    explicit OutboxStore(const QString &dir, QObject *parent = nullptr);
     ~OutboxStore() override;
 
     // Append an entry. Returns the new row id.

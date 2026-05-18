@@ -61,6 +61,7 @@ public:
     // Populate fields before first show.
     void setDisplayName(const QString &name);
     void setDownloadDir(const QString &dir);
+    void setDataDir(const QString &dir);
     void setCloseAction(CloseAction action);
     void setLaunchAtStartup(bool enable);
     void setDefaultStorageStrategy(StorageStrategy s);
@@ -72,6 +73,7 @@ public:
 signals:
     void displayNameChanged(const QString &name);
     void downloadDirChanged(const QString &dir);
+    void dataDirChanged(const QString &dir);
     void closeActionChanged(CloseAction action);
     void launchAtStartupChanged(bool enable);
     void defaultStorageStrategyChanged(StorageStrategy s);
@@ -108,7 +110,8 @@ private:
     void layoutChildren();
 
     // Hit-test rects (in widget coords, scroll-adjusted)
-    QRect browseBtnRect()   const;
+    QRect browseBtnRect()     const;  // Download folder
+    QRect browseDataBtnRect() const;  // Data folder
     QRect radioMinRect()    const;
     QRect radioQuitRect()   const;
     QRect toggleStartRect() const;
@@ -123,6 +126,7 @@ private:
     QRect peersRemoveRect()         const;
 
     void browseForFolder();
+    void browseForDataFolder();
 
     // ── Paint helpers ─────────────────────────────────────────────────────────
     void paintSidebar(QPainter &p) const;
@@ -165,6 +169,7 @@ private:
     // Input fields (General)
     QLineEdit *m_nameEdit;
     QLineEdit *m_dirEdit;
+    QLineEdit *m_dataDirEdit;
 
     // History list
     QScrollArea    *m_histScroll;
@@ -181,6 +186,7 @@ private:
     // ── Hover flags ───────────────────────────────────────────────────────────
     int  m_navHover        = -1;
     bool m_browseHover     = false;
+    bool m_browseDataHover = false;
     bool m_minHover        = false;
     bool m_quitHover       = false;
     bool m_startHover      = false;

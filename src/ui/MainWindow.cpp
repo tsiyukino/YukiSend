@@ -284,6 +284,7 @@ MainWindow::MainWindow(App *app, QWidget *parent)
     // ── Settings page: populate from persisted values ─────────────────────────
     m_settingsPage->setDisplayName(m_settings.displayName());
     m_settingsPage->setDownloadDir(m_settings.downloadDir());
+    m_settingsPage->setDataDir(m_settings.dataDir());
     m_settingsPage->setCloseAction(m_settings.closeAction());
     m_settingsPage->setLaunchAtStartup(m_settings.launchAtStartup());
     m_settingsPage->setDefaultStorageStrategy(m_settings.defaultStorageStrategy());
@@ -298,6 +299,12 @@ MainWindow::MainWindow(App *app, QWidget *parent)
             this, [this](const QString &dir) {
                 m_settings.setDownloadDir(dir);
                 m_app->setDownloadDir(dir);
+            });
+
+    connect(m_settingsPage, &SettingsPage::dataDirChanged,
+            this, [this](const QString &dir) {
+                m_settings.setDataDir(dir);
+                // Data dir change takes effect after restart — no live action needed.
             });
 
     connect(m_settingsPage, &SettingsPage::closeActionChanged,

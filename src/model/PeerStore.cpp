@@ -3,18 +3,9 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <QStandardPaths>
 #include <QDir>
 #include <QDateTime>
 #include <QDebug>
-
-// Shares the same database file as ChatStore.
-// Connection name is unique so both can coexist.
-static const QString kDbPath = []() -> QString {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(dir);
-    return dir + QStringLiteral("/yukisend.db");
-}();
 
 struct PeerStore::Private {
     QSqlDatabase db;
@@ -32,12 +23,15 @@ struct PeerStore::Private {
     }
 };
 
-PeerStore::PeerStore(QObject *parent)
+PeerStore::PeerStore(const QString &dir, QObject *parent)
     : QObject(parent), d(new Private)
 {
+    QDir().mkpath(dir);
+    const QString dbPath = dir + QStringLiteral("/yukisend.db");
+
     d->db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
                                       QStringLiteral("peerstore"));
-    d->db.setDatabaseName(kDbPath);
+    d->db.setDatabaseName(dbPath);
     if (!d->db.open()) {
         qWarning() << "PeerStore: cannot open db:" << d->db.lastError().text();
         return;

@@ -319,6 +319,7 @@ SettingsPage::SettingsPage(QWidget *parent)
     : QWidget(parent)
     , m_nameEdit(new ThemedLineEdit(this))
     , m_dirEdit(new ThemedLineEdit(this))
+    , m_dataDirEdit(new ThemedLineEdit(this))
     , m_histScroll(makeScrollArea(m_histList = new HistoryListWidget))
     , m_savedScroll(makeScrollArea(m_savedList = new PeerCheckList))
     , m_favScroll(makeScrollArea(m_favList = new PeerCheckList))
@@ -333,6 +334,8 @@ SettingsPage::SettingsPage(QWidget *parent)
 
     m_dirEdit->setReadOnly(true);
     m_dirEdit->setPlaceholderText(QStringLiteral("System default (Downloads)"));
+    m_dataDirEdit->setReadOnly(true);
+    m_dataDirEdit->setPlaceholderText(QStringLiteral("System default (AppData)"));
     m_nameEdit->setPlaceholderText(QStringLiteral("Your hostname"));
 
     connect(m_nameEdit, &QLineEdit::editingFinished, this, [this] {
@@ -350,6 +353,7 @@ void SettingsPage::setPeerStore(PeerStore *store) { m_store = store; }
 
 void SettingsPage::setDisplayName(const QString &n)        { m_nameEdit->setText(n); }
 void SettingsPage::setDownloadDir(const QString &d)        { m_dirEdit->setText(d); }
+void SettingsPage::setDataDir(const QString &d)            { m_dataDirEdit->setText(d); }
 void SettingsPage::setCloseAction(CloseAction a)           { m_closeAction = a; update(); }
 void SettingsPage::setLaunchAtStartup(bool e)              { m_launchAtStartup = e; update(); }
 void SettingsPage::setDefaultStorageStrategy(StorageStrategy s) { m_strategy = s; update(); }
@@ -395,6 +399,7 @@ int SettingsPage::contentHeight(Category cat) const {
     // Approximate total drawn height per category
     switch (cat) {
     case General:  return kPagePadTop + kSecLineH + kRowH + kSectionGap
+                        + kSecLineH + kRowH + kSectionGap
                         + kSecLineH + kRowH + kPagePadTop;
     case Window:   return kPagePadTop + kSecLineH + kRowH*2 + kPagePadTop;
     case Startup:  return kPagePadTop + kSecLineH + kRowH   + kPagePadTop;
@@ -421,7 +426,7 @@ void SettingsPage::layoutChildren() {
     const int   sy = m_scrollY[m_category];
 
     // Hide all scroll areas first, then show the relevant one(s)
-    m_nameEdit->hide();    m_dirEdit->hide();
+    m_nameEdit->hide();    m_dirEdit->hide();    m_dataDirEdit->hide();
     m_histScroll->hide();
     m_savedScroll->hide(); m_favScroll->hide(); m_blockedScroll->hide();
 
@@ -432,18 +437,22 @@ void SettingsPage::layoutChildren() {
     const int fieldW = padX + padW - kCardPadH - fieldX;
 
     if (m_category == General) {
-        // Identity row y
-        const int idTop  = kPagePadTop + kSecLineH + kSectionGap/2;
-        const int rowY1  = idTop - sy;
-        m_nameEdit->setGeometry(fieldX, rowY1 + (kRowH-32)/2, fieldW, 32);
+        // Identity row
+        const int idTop    = kPagePadTop + kSecLineH + kSectionGap/2;
+        m_nameEdit->setGeometry(fieldX, idTop - sy + (kRowH-32)/2, fieldW, 32);
         m_nameEdit->show();
 
-        // Files row y
+        // Files (Download folder) row
         const int filesTop = idTop + kRowH + kSectionGap + kSecLineH + kSectionGap/2;
-        const int rowY2    = filesTop - sy;
-        m_dirEdit->setGeometry(fieldX, rowY2 + (kRowH-32)/2,
+        m_dirEdit->setGeometry(fieldX, filesTop - sy + (kRowH-32)/2,
                                fieldW - kBrowseW - kBtnGap, 32);
         m_dirEdit->show();
+
+        // Data folder row
+        const int dataTop  = filesTop + kRowH + kSectionGap + kSecLineH + kSectionGap/2;
+        m_dataDirEdit->setGeometry(fieldX, dataTop - sy + (kRowH-32)/2,
+                                   fieldW - kBrowseW - kBtnGap, 32);
+        m_dataDirEdit->show();
     }
 
     if (m_category == History) {
@@ -494,12 +503,21 @@ QRect SettingsPage::browseBtnRect() const {
     const int sy = m_scrollY[m_category];
     const int padX = crLeft() + kPagePadH;
     const int padW = width() - crLeft() - kPagePadH * 2;
-    // Files section is second section in General
     const int idTop    = kPagePadTop + kSecLineH + kSectionGap/2;
     const int filesTop = idTop + kRowH + kSectionGap + kSecLineH + kSectionGap/2;
-    const int rowTop   = filesTop - sy;
     const int rowRight = padX + padW - kCardPadH;
-    return QRect(rowRight - kBrowseW, rowTop + (kRowH-32)/2, kBrowseW, 32);
+    return QRect(rowRight - kBrowseW, filesTop - sy + (kRowH-32)/2, kBrowseW, 32);
+}
+
+QRect SettingsPage::browseDataBtnRect() const {
+    const int sy = m_scrollY[m_category];
+    const int padX = crLeft() + kPagePadH;
+    const int padW = width() - crLeft() - kPagePadH * 2;
+    const int idTop    = kPagePadTop + kSecLineH + kSectionGap/2;
+    const int filesTop = idTop + kRowH + kSectionGap + kSecLineH + kSectionGap/2;
+    const int dataTop  = filesTop + kRowH + kSectionGap + kSecLineH + kSectionGap/2;
+    const int rowRight = padX + padW - kCardPadH;
+    return QRect(rowRight - kBrowseW, dataTop - sy + (kRowH-32)/2, kBrowseW, 32);
 }
 QRect SettingsPage::radioMinRect() const {
     const int sy = m_scrollY[m_category];
@@ -700,34 +718,45 @@ void SettingsPage::paintGeneral(QPainter &p) const {
     const int padW = width() - crLeft() - kPagePadH * 2;
 
     // Identity section
-    const int idLabelY = kPagePadTop - sy;
-    const int idCardTop = idLabelY + kSecLineH + kSectionGap/2;
-    paintSectionLabel(p, idLabelY, QStringLiteral("Identity"));
-    paintCard(p, idCardTop, 1);
+    const int idCardTop  = kPagePadTop + kSecLineH + kSectionGap/2;
+    paintSectionLabel(p, kPagePadTop - sy, QStringLiteral("Identity"));
+    paintCard(p, idCardTop - sy, 1);
     {
-        const QRect row(padX, idCardTop, padW, kRowH);
+        const QRect row(padX, idCardTop - sy, padW, kRowH);
         paintRowLabel(p, row, QStringLiteral("Display name"),
                       QStringLiteral("Shown to other devices on the network"));
     }
 
-    // Files section
-    const int fileLabelY = idCardTop + kRowH + kSectionGap - sy;
+    // Files (Download folder) section
+    const int fileLabelY  = idCardTop + kRowH + kSectionGap;
     const int fileCardTop = fileLabelY + kSecLineH + kSectionGap/2;
-    paintSectionLabel(p, fileLabelY + sy, QStringLiteral("Files")); // label uses idCardTop-relative y — re-do:
-    // Actually recompute without double-sy:
-    const int fileLabelY2 = idCardTop + kRowH + kSectionGap;
-    const int fileCardTop2 = fileLabelY2 + kSecLineH + kSectionGap/2;
-    (void)fileLabelY; (void)fileCardTop; // suppress unused
-    paintSectionLabel(p, fileLabelY2 - sy, QStringLiteral("Files"));
-    paintCard(p, fileCardTop2 - sy, 1);
+    paintSectionLabel(p, fileLabelY - sy, QStringLiteral("Files"));
+    paintCard(p, fileCardTop - sy, 1);
     {
-        const QRect row(padX, fileCardTop2 - sy, padW, kRowH);
+        const QRect row(padX, fileCardTop - sy, padW, kRowH);
         paintRowLabel(p, row, QStringLiteral("Download folder"),
                       QStringLiteral("Where received files are saved"));
-        // Browse button (raw painter coords = screen already via -sy applied above)
         const QRect browse(padX + padW - kCardPadH - kBrowseW, row.top() + (kRowH-32)/2, kBrowseW, 32);
         p.setPen(Qt::NoPen);
         p.setBrush(m_browseHover ? Theme::Color::AccentHover : Theme::Color::Accent);
+        p.drawRoundedRect(browse, Theme::Space::RadiusS, Theme::Space::RadiusS);
+        p.setFont(Fonts::medium(Theme::Font::SizeBody));
+        p.setPen(Qt::white);
+        p.drawText(browse, Qt::AlignCenter, QStringLiteral("Browse"));
+    }
+
+    // Data folder section
+    const int dataLabelY  = fileCardTop + kRowH + kSectionGap;
+    const int dataCardTop = dataLabelY + kSecLineH + kSectionGap/2;
+    paintSectionLabel(p, dataLabelY - sy, QStringLiteral("Data"));
+    paintCard(p, dataCardTop - sy, 1);
+    {
+        const QRect row(padX, dataCardTop - sy, padW, kRowH);
+        paintRowLabel(p, row, QStringLiteral("Data folder"),
+                      QStringLiteral("Database and cache — change takes effect after restart"));
+        const QRect browse(padX + padW - kCardPadH - kBrowseW, row.top() + (kRowH-32)/2, kBrowseW, 32);
+        p.setPen(Qt::NoPen);
+        p.setBrush(m_browseDataHover ? Theme::Color::AccentHover : Theme::Color::Accent);
         p.drawRoundedRect(browse, Theme::Space::RadiusS, Theme::Space::RadiusS);
         p.setFont(Fonts::medium(Theme::Font::SizeBody));
         p.setPen(Qt::white);
@@ -948,7 +977,7 @@ void SettingsPage::mouseMoveEvent(QMouseEvent *event) {
         ? qBound(0, pos.y() / kNavItemH, kCatCount - 1)
         : -1;
 
-    bool bh = false, mh = false, qh = false, sh = false,
+    bool bh = false, bdh = false, mh = false, qh = false, sh = false,
          ph = false, seh = false, hcah = false, hdh = false,
          pcah = false, prh = false;
     int  tabHov = -1;
@@ -957,6 +986,7 @@ void SettingsPage::mouseMoveEvent(QMouseEvent *event) {
         switch (m_category) {
         case General:
             bh  = browseBtnRect().contains(pos);
+            bdh = browseDataBtnRect().contains(pos);
             break;
         case Window:
             mh  = radioMinRect().contains(pos);
@@ -983,16 +1013,18 @@ void SettingsPage::mouseMoveEvent(QMouseEvent *event) {
         }
     }
 
-    const bool anyHov = bh||mh||qh||sh||ph||seh||hcah||hdh||pcah||prh||(tabHov>=0)||(navHov>=0);
+    const bool anyHov = bh||bdh||mh||qh||sh||ph||seh||hcah||hdh||pcah||prh||(tabHov>=0)||(navHov>=0);
     setCursor(anyHov ? Qt::PointingHandCursor : Qt::ArrowCursor);
 
-    if (navHov != m_navHover || bh != m_browseHover || mh != m_minHover ||
-        qh != m_quitHover || sh != m_startHover || ph != m_persHover ||
-        seh != m_sessHover || hcah != m_histChkAllHover || hdh != m_histDelHover ||
+    if (navHov != m_navHover || bh != m_browseHover || bdh != m_browseDataHover ||
+        mh != m_minHover || qh != m_quitHover || sh != m_startHover ||
+        ph != m_persHover || seh != m_sessHover ||
+        hcah != m_histChkAllHover || hdh != m_histDelHover ||
         tabHov != m_peersTabHover || pcah != m_peersChkAllHov || prh != m_peersRemoveHov)
     {
         m_navHover = navHov;
-        m_browseHover = bh; m_minHover = mh; m_quitHover = qh;
+        m_browseHover = bh; m_browseDataHover = bdh;
+        m_minHover = mh; m_quitHover = qh;
         m_startHover = sh; m_persHover = ph; m_sessHover = seh;
         m_histChkAllHover = hcah; m_histDelHover = hdh;
         m_peersTabHover = tabHov;
@@ -1003,7 +1035,7 @@ void SettingsPage::mouseMoveEvent(QMouseEvent *event) {
 
 void SettingsPage::leaveEvent(QEvent *) {
     m_navHover = -1;
-    m_browseHover = m_minHover = m_quitHover = m_startHover =
+    m_browseHover = m_browseDataHover = m_minHover = m_quitHover = m_startHover =
     m_persHover = m_sessHover = m_histChkAllHover = m_histDelHover =
     m_peersChkAllHov = m_peersRemoveHov = false;
     m_peersTabHover = -1;
@@ -1033,7 +1065,10 @@ void SettingsPage::mousePressEvent(QMouseEvent *event) {
 
     switch (m_category) {
     case General:
-        if (browseBtnRect().contains(pos)) browseForFolder();
+        if (browseBtnRect().contains(pos))
+            browseForFolder();
+        else if (browseDataBtnRect().contains(pos))
+            browseForDataFolder();
         break;
     case Window:
         if (radioMinRect().contains(pos) && m_closeAction != CloseAction::MinimizeToTray) {
@@ -1119,6 +1154,19 @@ void SettingsPage::browseForFolder() {
     if (chosen.isEmpty()) return;
     m_dirEdit->setText(chosen);
     emit downloadDirChanged(chosen);
+}
+
+void SettingsPage::browseForDataFolder() {
+    const QString current = m_dataDirEdit->text();
+    const QString chosen  = QFileDialog::getExistingDirectory(
+        this, QStringLiteral("Choose data folder"),
+        current.isEmpty()
+            ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+            : current,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (chosen.isEmpty()) return;
+    m_dataDirEdit->setText(chosen);
+    emit dataDirChanged(chosen);
 }
 
 #include "SettingsPage.moc"

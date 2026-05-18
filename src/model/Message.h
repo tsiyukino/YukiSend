@@ -3,6 +3,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QDateTime>
+#include <QJsonArray>
 
 // A single chat message. Covers text, file offer, and folder offer.
 // Stored in SQLite via ChatStore; passed by value throughout the UI layer.
@@ -41,4 +42,6 @@ struct Message {
                                            // so accept/deny can echo it back correctly
     QByteArray    thumbData;               // JPEG-encoded low-res thumbnail for Image messages;
                                            // blurred by MessageDelegateRenderer before accept
+    QJsonArray    folderTree;              // Folder structure sent by the sender;
+                                           // populated from the FileRequest payload and persisted to DB
 };

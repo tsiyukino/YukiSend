@@ -36,9 +36,9 @@ App::App(QObject *parent)
     , m_server(new TransferServer(this))
     , m_chatServer(new ChatServer(this))
     , m_chatClient(new ChatClient(this))
-    , m_store(new ChatStore(this))
-    , m_peerStore(new PeerStore(this))
-    , m_outbox(new OutboxStore(this))
+    , m_store(new ChatStore(AppSettings{}.dataDir(), this))
+    , m_peerStore(new PeerStore(AppSettings{}.dataDir(), this))
+    , m_outbox(new OutboxStore(AppSettings{}.dataDir(), this))
 {
     connect(m_discovery, &Discovery::peersChanged, this, [this] {
         const QList<Peer> currentPeers = m_discovery->peers();
@@ -134,6 +134,10 @@ App::App(QObject *parent)
             this, [this](quintptr tid, const QString &path) {
                 InboundEntry *entry = m_inboundIdMap.value(tid, nullptr);
                 if (!entry) { emit transferFinished(path); return; }
+                // For folder transfers, skip individual file updates — the root folder
+                // path is already known (set at accept time) and will be stamped at
+                // batch completion. Writing single-file paths here would corrupt filePath.
+                if (entry->isFolder) return;
                 Message upd;
                 upd.id       = entry->msgId;
                 upd.peerId   = entry->peerId;
@@ -149,14 +153,18 @@ App::App(QObject *parent)
                 InboundEntry *entry = m_inboundIdMap.take(tid);
                 if (!entry) return;
                 Message upd;
-                upd.id     = entry->msgId;
-                upd.peerId = entry->peerId;
-                upd.status = MessageStatus::Done;
+                upd.id       = entry->msgId;
+                upd.peerId   = entry->peerId;
+                upd.status   = MessageStatus::Done;
+                // For folder transfers, compute the root path deterministically:
+                // downloadDir (where TransferServer placed files) + folder display name.
+                if (entry->isFolder && !entry->folderName.isEmpty()) {
+                    upd.filePath = m_server->downloadDir()
+                                 + QDir::separator() + entry->folderName;
+                }
                 m_store->updateMessage(upd);
                 emit messageUpdated(upd);
                 emit transferFinished({});
-                // Entry was dequeued from m_pendingInbound at transferStarted time;
-                // m_inboundIdMap was the sole owner — just delete.
                 delete entry;
             });
 
@@ -320,16 +328,27 @@ void App::sendFolder(const QString &peerId, const QString &folderPath) {
     const QFileInfo fi(folderPath);
     const qint64 totalSz = FileUtils::totalSize(FileUtils::listFiles(folderPath));
 
+    // Serialize the directory structure before persisting so the snapshot is stored in DB.
+    QJsonArray treeArr;
+    for (const FileUtils::FileEntry &e : FileUtils::listFiles(folderPath)) {
+        QJsonObject o;
+        o[QStringLiteral("p")] = e.relPath.mid(fi.fileName().size() + 1); // strip "rootName/"
+        o[QStringLiteral("d")] = e.isDir;
+        o[QStringLiteral("s")] = static_cast<double>(e.size);
+        treeArr.append(o);
+    }
+
     Message msg;
-    msg.peerId    = peerId;
-    msg.type      = MessageType::Folder;
-    msg.outgoing  = true;
-    msg.fileName  = fi.fileName();
-    msg.filePath  = folderPath;
-    msg.fileSize  = totalSz;
-    msg.status    = MessageStatus::WaitingAccept;
-    msg.timestamp = QDateTime::currentDateTime();
-    msg.id        = m_store->addMessage(msg);
+    msg.peerId     = peerId;
+    msg.type       = MessageType::Folder;
+    msg.outgoing   = true;
+    msg.fileName   = fi.fileName();
+    msg.filePath   = folderPath;
+    msg.fileSize   = totalSz;
+    msg.status     = MessageStatus::WaitingAccept;
+    msg.timestamp  = QDateTime::currentDateTime();
+    msg.folderTree = treeArr;
+    msg.id         = m_store->addMessage(msg);
     emit messageAdded(msg);
 
     const Peer peer = peerById(peerId);
@@ -341,6 +360,7 @@ void App::sendFolder(const QString &peerId, const QString &folderPath) {
     payload[QStringLiteral("name")]   = fi.fileName();
     payload[QStringLiteral("size")]   = totalSz;
     payload[QStringLiteral("folder")] = true;
+    payload[QStringLiteral("tree")]   = treeArr;
     m_chatClient->send(peer.address, kChatPort,
                        Protocol::MessageType::FileRequest, msg.id, payload);
 }
@@ -363,7 +383,11 @@ void App::acceptTransfer(qint64 messageId) {
     emit messageUpdated(updated);
 
     // Enqueue entry so transferStarted FIFO can map the incoming TCP connection(s).
-    m_pendingInbound.append(new InboundEntry{msg.id, msg.peerId, 0});
+    const bool isFolder = (msg.type == MessageType::Folder);
+    auto *entry = new InboundEntry{msg.id, msg.peerId, 0, isFolder};
+    if (isFolder)
+        entry->folderName = msg.fileName;
+    m_pendingInbound.append(entry);
 
     const Peer peer = peerById(msg.peerId);
     if (peer.id.isEmpty()) return;
@@ -550,6 +574,9 @@ void App::routeIncoming(const QString &peerIdOrAddr,
         const QString thumbB64 = payload[QStringLiteral("thumb")].toString();
         if (!thumbB64.isEmpty())
             msg.thumbData = QByteArray::fromBase64(thumbB64.toLatin1());
+        // Store folder tree sent by sender so receiver can preview structure immediately.
+        if (msg.type == MessageType::Folder)
+            msg.folderTree = payload[QStringLiteral("tree")].toArray();
         msg.id          = m_store->addMessage(msg);
         emit messageAdded(msg);
         break;
@@ -846,7 +873,11 @@ void App::acceptTransferTo(qint64 messageId, const QString &destDir) {
     m_store->updateMessage(updated);
     emit messageUpdated(updated);
 
-    m_pendingInbound.append(new InboundEntry{msg.id, msg.peerId, 0});
+    const bool isFolder = (msg.type == MessageType::Folder);
+    auto *inbound = new InboundEntry{msg.id, msg.peerId, 0, isFolder};
+    if (isFolder)
+        inbound->folderName = msg.fileName;
+    m_pendingInbound.append(inbound);
 
     const Peer peer = peerById(msg.peerId);
     if (peer.id.isEmpty()) return;

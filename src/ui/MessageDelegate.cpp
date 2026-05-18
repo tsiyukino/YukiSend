@@ -9,17 +9,27 @@
 #include "theme/Fonts.h"
 #include "PeerItemDelegate.h"
 #include "utils/ImageUtils.h"
+#include "utils/FileUtils.h"
 
 // ── File-local layout constants ───────────────────────────────────────────────
 
-static constexpr int kAvatarColW   = MessageDelegate::kAvatarSize + 10;
-static constexpr int kFileBoxH     = 40;
-static constexpr int kFileBoxW     = 260;
-static constexpr int kFolderBoxW   = 320;
-static constexpr int kBoxRadius    =  8;
-static constexpr int kBarH         =  4;
-static constexpr int kBarRadius    =  2;
-static constexpr int kActionFontSz = 11; // pt
+static constexpr int kAvatarColW    = MessageDelegate::kAvatarSize + 10;
+static constexpr int kFileBoxH      = 40;  // fixed height for File messages
+static constexpr int kFileBoxW      = 260;
+static constexpr int kFolderBoxW    = 300;
+static constexpr int kFolderHeaderH = 36;  // name+status row inside folder box
+static constexpr int kBoxRadius          =  8;
+static constexpr int kBarH               =  4;
+static constexpr int kBarRadius          =  2;
+static constexpr int kActionFontSz       = 11; // pt
+static constexpr int kFolderProgressH    = 20; // progress section height inside box (bar + padding)
+
+// ── Tree layout constants (must be visible to both drawFolderBox and rowHeight)
+static constexpr int kTreeRowH    = 20;
+static constexpr int kTreeIndentW = 14;
+static constexpr int kTreePadH    =  8; // horizontal padding inside box
+static constexpr int kTreePadBot  =  6; // padding below last tree row
+static constexpr int kTreeFontSz  = 11; // pt
 
 // ── Static helpers ────────────────────────────────────────────────────────────
 
@@ -59,8 +69,7 @@ static void drawProgressBar(QPainter *p, const QRect &box, const Message &msg) {
 
 static void drawFileBox(QPainter *p, int boxLeft, int boxTop,
                         const Message &msg, int hoverX) {
-    const int boxW = (msg.type == MessageType::Folder) ? kFolderBoxW : kFileBoxW;
-    const QRect box(boxLeft, boxTop, boxW, kFileBoxH);
+    const QRect box(boxLeft, boxTop, kFileBoxW, kFileBoxH);
 
     p->setPen(Qt::NoPen);
     p->setBrush(Theme::Color::SearchBg);
@@ -121,6 +130,194 @@ static void drawFileBox(QPainter *p, int boxLeft, int boxTop,
             const int reqX     = box.right() - afm.horizontalAdvance(req);
             const bool overReq = isHovered && (hoverX >= reqX - 4);
             p->setPen(overReq ? hoverColor : baseColor);
+            p->drawText(reqX, actionY + afm.ascent(), req);
+        }
+    }
+}
+
+// ── Folder box (header + inline tree) ────────────────────────────────────────
+
+// Height of the tree rows section inside the folder box.
+// Returns 0 when there is no tree (receiver hasn't accepted yet).
+static int folderTreeSectionH(const FolderTreeState *tree) {
+    if (!tree || !tree->ready()) return 0;
+    const auto &vis = tree->visible();
+    const int rowCount = vis.rows.size() + vis.moreAt.size();
+    return qMax(1, rowCount) * kTreeRowH + kTreePadBot;
+}
+
+// Total height of the whole folder box (header + tree rows + optional progress section).
+static int folderBoxH(const FolderTreeState *tree, bool transferring = false) {
+    return kFolderHeaderH + folderTreeSectionH(tree)
+         + (transferring ? kFolderProgressH : 0);
+}
+
+// Draw one tree row's directory triangle at (triCX, triCY).
+static void drawTreeTriangle(QPainter *p, int triCX, int triCY,
+                              bool expanded, const QColor &col)
+{
+    p->save();
+    p->setRenderHint(QPainter::Antialiasing);
+    p->setPen(Qt::NoPen);
+    p->setBrush(col);
+    QPolygon tri;
+    if (expanded)
+        tri << QPoint(triCX - 4, triCY - 2) << QPoint(triCX + 4, triCY - 2) << QPoint(triCX, triCY + 3);
+    else
+        tri << QPoint(triCX - 2, triCY - 4) << QPoint(triCX - 2, triCY + 4) << QPoint(triCX + 3, triCY);
+    p->drawPolygon(tri);
+    p->restore();
+}
+
+// Draw the folder message box (header + tree) starting at (boxLeft, boxTop).
+static void drawFolderBox(QPainter *p, int boxLeft, int boxTop,
+                           const Message &msg, int hoverX, int hoverY,
+                           const FolderTreeState *tree)
+{
+    const bool transferring = (msg.status == MessageStatus::Transferring);
+    const int boxH = folderBoxH(tree, transferring);
+    const QRect box(boxLeft, boxTop, kFolderBoxW, boxH);
+
+    // Box background
+    p->setPen(Qt::NoPen);
+    p->setBrush(Theme::Color::SearchBg);
+    p->drawRoundedRect(box, kBoxRadius, kBoxRadius);
+
+    // ── Header row ────────────────────────────────────────────────────────────
+    // Divider between header and tree area (only when tree is present)
+    if (tree && tree->ready())
+        p->fillRect(QRect(boxLeft, boxTop + kFolderHeaderH - 1, kFolderBoxW, 1),
+                    Theme::Color::Divider);
+
+    // Folder name
+    p->setFont(Fonts::medium(Theme::Font::SizeCaption));
+    p->setPen(Theme::Color::TextPrimary);
+    const QFontMetrics nfm(p->font());
+    const int nameAreaW = kFolderBoxW - 80 - MessageDelegate::kRowPadH * 2;
+    const QString name  = nfm.elidedText(msg.fileName, Qt::ElideMiddle, nameAreaW);
+    p->drawText(boxLeft + MessageDelegate::kRowPadH,
+                boxTop + (kFolderHeaderH + nfm.ascent() - nfm.descent()) / 2, name);
+
+    // Status
+    p->setFont(Fonts::regular(11));
+    p->setPen(Theme::Color::TextSecondary);
+    const QFontMetrics sfm(p->font());
+    const QString stat = statusText(msg);
+    p->drawText(boxLeft + kFolderBoxW - MessageDelegate::kRowPadH - sfm.horizontalAdvance(stat),
+                boxTop + (kFolderHeaderH + sfm.ascent() - sfm.descent()) / 2, stat);
+
+    // ── Tree rows ─────────────────────────────────────────────────────────────
+    if (tree && tree->ready()) {
+    const auto &vis = tree->visible();
+    p->setFont(Fonts::regular(kTreeFontSz));
+    const QFontMetrics fm(p->font());
+    const int treeTop = boxTop + kFolderHeaderH;
+
+    // Collect "more" positions sorted
+    QList<int> morePos = vis.moreAt.keys();
+    std::sort(morePos.begin(), morePos.end());
+
+    int row = 0, ri = 0, mi = 0;
+    while (ri < vis.rows.size() || mi < morePos.size()) {
+        // "… N more" sentinels
+        while (mi < morePos.size() && morePos[mi] <= ri) {
+            const TreeMore &more = vis.moreAt[morePos[mi]];
+            const int rowY  = treeTop + row * kTreeRowH;
+            const int textY = rowY + (kTreeRowH + fm.ascent() - fm.descent()) / 2;
+            const bool hov  = (hoverY >= rowY && hoverY < rowY + kTreeRowH
+                             && hoverX >= boxLeft && hoverX < boxLeft + kFolderBoxW);
+            p->setPen(hov ? Theme::Color::Accent : Theme::Color::TextSecondary);
+            p->drawText(boxLeft + kTreePadH * 2, textY,
+                        QStringLiteral("… %1 more").arg(more.total - more.shown));
+            ++mi; ++row;
+        }
+        if (ri >= vis.rows.size()) break;
+
+        const TreeRow &tr   = vis.rows[ri];
+        const int rowY  = treeTop + row * kTreeRowH;
+        const int textY = rowY + (kTreeRowH + fm.ascent() - fm.descent()) / 2;
+        const int indX  = boxLeft + kTreePadH + tr.depth * kTreeIndentW;
+        const bool hov  = (hoverY >= rowY && hoverY < rowY + kTreeRowH
+                         && hoverX >= boxLeft && hoverX < boxLeft + kFolderBoxW);
+        const QColor rowCol = hov ? Theme::Color::TextPrimary : Theme::Color::TextSecondary;
+
+        if (tr.isDir) {
+            drawTreeTriangle(p, indX + 5, rowY + kTreeRowH / 2, tr.expanded, rowCol);
+            p->setPen(rowCol);
+            p->setFont(Fonts::medium(kTreeFontSz));
+            const int nameX    = indX + 14;
+            const int nameMaxW = boxLeft + kFolderBoxW - nameX - kTreePadH;
+            p->drawText(nameX, textY, fm.elidedText(tr.name, Qt::ElideRight, nameMaxW));
+            p->setFont(Fonts::regular(kTreeFontSz));
+        } else {
+            p->setPen(rowCol);
+            const int nameX = indX + 10;
+            const QString szLabel = FileUtils::formatSize(tr.size);
+            const int szW      = fm.horizontalAdvance(szLabel);
+            const int nameMaxW = boxLeft + kFolderBoxW - nameX - szW - kTreePadH * 2;
+            p->drawText(indX + 2, textY, QStringLiteral("·"));
+            p->drawText(nameX, textY, fm.elidedText(tr.name, Qt::ElideRight, nameMaxW));
+            const QColor dimCol(rowCol.red(), rowCol.green(), rowCol.blue(),
+                                hov ? 160 : 110);
+            p->setPen(dimCol);
+            p->drawText(boxLeft + kFolderBoxW - kTreePadH - szW, textY, szLabel);
+        }
+        ++ri; ++row;
+    }
+    } // end tree rows block
+
+    // ── Progress bar below tree (Transferring only) ───────────────────────────
+    if (transferring) {
+        const int barSectionTop = boxTop + kFolderHeaderH + folderTreeSectionH(tree);
+        const QRect barRect(boxLeft + kTreePadH,
+                            barSectionTop + (kFolderProgressH - kBarH) / 2,
+                            kFolderBoxW - kTreePadH * 2, kBarH);
+        const double progress = msg.fileSize > 0
+            ? double(msg.bytesTransferred) / double(msg.fileSize) : 0.0;
+        p->setPen(Qt::NoPen);
+        p->setBrush(Theme::Color::ProgressBg);
+        p->drawRoundedRect(barRect, kBarRadius, kBarRadius);
+        const int fillW = int(barRect.width() * progress);
+        if (fillW > 0) {
+            p->setBrush(Theme::Color::ProgressFg);
+            p->drawRoundedRect(QRect(barRect.left(), barRect.top(), fillW, kBarH),
+                               kBarRadius, kBarRadius);
+        }
+    }
+
+    // ── Accept/Deny action strip (incoming only, below the box) ──────────────
+    if (!msg.outgoing) {
+        const int actionY = boxTop + boxH + 4;
+        p->setFont(Fonts::regular(kActionFontSz));
+        const QFontMetrics afm(p->font());
+        const bool isHov  = (hoverX >= 0);
+        const QColor base(100, 100, 100);
+        const QColor hov2(40,  40,  40);
+
+        if (msg.status == MessageStatus::WaitingAccept) {
+            const QString deny     = QStringLiteral("Deny");
+            const QString acceptTo = QStringLiteral("Save To");
+            const QString accept   = QStringLiteral("Accept");
+            const int kGap  = 10;
+            const int toW   = afm.horizontalAdvance(acceptTo);
+            const int accW  = afm.horizontalAdvance(accept);
+            const int denyX = boxLeft + kFolderBoxW - afm.horizontalAdvance(deny);
+            const int toX   = denyX - kGap - toW;
+            const int accX  = toX   - kGap - accW;
+            const int textY = actionY + afm.ascent();
+            const int midDT = toX  + toW  + kGap / 2;
+            const int midTA = accX + accW + kGap / 2;
+            p->setPen((isHov && hoverX >= midDT)               ? hov2 : base);
+            p->drawText(denyX, textY, deny);
+            p->setPen((isHov && hoverX >= midTA && hoverX < midDT) ? hov2 : base);
+            p->drawText(toX, textY, acceptTo);
+            p->setPen((isHov && hoverX >= accX - 4 && hoverX < midTA) ? hov2 : base);
+            p->drawText(accX, textY, accept);
+        } else if (msg.status == MessageStatus::Done
+                || msg.status == MessageStatus::Denied) {
+            const QString req  = QStringLiteral("Request Again");
+            const int reqX     = boxLeft + kFolderBoxW - afm.horizontalAdvance(req);
+            p->setPen((isHov && hoverX >= reqX - 4) ? hov2 : base);
             p->drawText(reqX, actionY + afm.ascent(), req);
         }
     }
@@ -246,17 +443,25 @@ static void drawImagePreview(QPainter *p, int boxLeft, int boxTop,
 // ── MessageDelegateRenderer ───────────────────────────────────────────────────
 
 void MessageDelegateRenderer::invalidate(qint64 messageId) {
-    m_thumbnails.remove(messageId);
+    m_thumbCache.invalidate(messageId);
 }
 
 void MessageDelegateRenderer::clearCache() {
-    m_thumbnails.clear();
+    m_thumbCache.clearMemory();
 }
 
-int MessageDelegateRenderer::rowHeight(const Message &msg) const {
+int MessageDelegateRenderer::rowHeight(const Message &msg,
+                                       const FolderTreeState *tree) const {
     switch (msg.type) {
-    case MessageType::File:
     case MessageType::Folder: {
+        const bool xferring = (msg.status == MessageStatus::Transferring);
+        const int base = MessageDelegate::kRowPadV + MessageDelegate::kNameH
+                       + folderBoxH(tree, xferring) + MessageDelegate::kRowPadV;
+        if (msg.outgoing) return base;
+        const QFontMetrics afm(Fonts::regular(kActionFontSz));
+        return base + 4 + afm.height();
+    }
+    case MessageType::File: {
         const int base = MessageDelegate::kRowPadV + MessageDelegate::kNameH
                        + kFileBoxH + MessageDelegate::kRowPadV;
         if (msg.outgoing) return base;
@@ -275,21 +480,18 @@ int MessageDelegateRenderer::rowHeight(const Message &msg) const {
     }
 }
 
-const QImage &MessageDelegateRenderer::thumbnail(const Message &msg) {
-    auto it = m_thumbnails.find(msg.id);
-    if (it != m_thumbnails.end())
-        return it.value();
+QImage MessageDelegateRenderer::thumbnail(const Message &msg) {
+    QImage cached = m_thumbCache.get(msg.id);
+    if (!cached.isNull())
+        return cached;
 
     QImage img;
     if (msg.status == MessageStatus::Done && !msg.filePath.isEmpty()) {
-        // Sharp thumbnail from the completed file.
         QImageReader reader(msg.filePath);
         reader.setScaledSize(QSize(Theme::Space::ImagePreviewMaxW * 2,
                                   Theme::Space::ImagePreviewH * 2));
         img = reader.read();
     } else if (!msg.thumbData.isEmpty()) {
-        // Decode the embedded low-res JPEG, scale it up to fill the preview
-        // box, then blur — cached so paintEvent stays cheap.
         const QImage decoded = ImageUtils::decodeJpeg(msg.thumbData);
         if (!decoded.isNull()) {
             const QImage scaled = decoded.scaled(
@@ -298,15 +500,18 @@ const QImage &MessageDelegateRenderer::thumbnail(const Message &msg) {
             img = ImageUtils::boxBlur(scaled, 6);
         }
     }
-    return m_thumbnails.insert(msg.id, img).value();
+    if (!img.isNull())
+        m_thumbCache.put(msg.id, img);
+    return img;
 }
 
 void MessageDelegateRenderer::draw(QPainter *p, const QRect &rect,
-                                   const Message &msg, int hoverX,
+                                   const Message &msg, int hoverX, int hoverY,
                                    const QString &senderName,
                                    const QColor &avatarColor,
                                    TextSelection selection,
-                                   bool copyFlash)
+                                   bool copyFlash,
+                                   const FolderTreeState *tree)
 {
     p->save();
     p->setRenderHint(QPainter::Antialiasing);
@@ -401,17 +606,20 @@ void MessageDelegateRenderer::draw(QPainter *p, const QRect &rect,
         }
         break;
     }
-    case MessageType::File:
-    case MessageType::Folder: {
-        const int boxW    = (msg.type == MessageType::Folder) ? kFolderBoxW : kFileBoxW;
-        const int boxLeft = out ? contentRight - boxW : contentLeft;
+    case MessageType::File: {
+        const int boxLeft = out ? contentRight - kFileBoxW : contentLeft;
         drawFileBox(p, boxLeft, contentTop, msg, hoverX);
+        break;
+    }
+    case MessageType::Folder: {
+        const int boxLeft = out ? contentRight - kFolderBoxW : contentLeft;
+        drawFolderBox(p, boxLeft, contentTop, msg, hoverX, hoverY, tree);
         break;
     }
     case MessageType::Image: {
         const int pw      = Theme::Space::ImagePreviewMaxW;
         const int boxLeft = out ? contentRight - pw : contentLeft;
-        const QImage &thumb = const_cast<MessageDelegateRenderer *>(this)->thumbnail(msg);
+        const QImage thumb = thumbnail(msg);
         drawImagePreview(p, boxLeft, contentTop, msg, thumb, hoverX);
         break;
     }
@@ -452,7 +660,9 @@ int MessageDelegateRenderer::charAtX(const Message &msg, int absoluteX, int cont
 
 int MessageDelegateRenderer::hitTestAction(const QRect &rect, const Message &msg,
                                            int clickX, int clickY,
-                                           const QString &senderName) const
+                                           const QString &senderName,
+                                           const FolderTreeState *tree,
+                                           QString *outTogglePath) const
 {
     if (msg.type == MessageType::Text) {
         // Hit-test the copy glyph in the name row, opposite side from avatar.
@@ -485,30 +695,24 @@ int MessageDelegateRenderer::hitTestAction(const QRect &rect, const Message &msg
             return 5;
         return 0;
     }
-    if (msg.outgoing) {
-        // Outgoing images that are Done can be opened by clicking the preview
-        if (msg.type == MessageType::Image && msg.status == MessageStatus::Done) {
-            const int contentTop  = rect.top() + MessageDelegate::kRowPadV
-                                  + MessageDelegate::kNameH;
-            const int contentRight = rect.right() - MessageDelegate::kRowPadH - kAvatarColW;
-            const QRect box(contentRight - Theme::Space::ImagePreviewMaxW,
-                            contentTop,
-                            Theme::Space::ImagePreviewMaxW,
-                            Theme::Space::ImagePreviewH);
-            if (box.contains(clickX, clickY)) return 4;
-        }
-        return 0;
-    }
-
-    if (msg.status != MessageStatus::WaitingAccept
-     && msg.status != MessageStatus::Done
-     && msg.status != MessageStatus::Denied) return 0;
-
     const int contentTop  = rect.top()  + MessageDelegate::kRowPadV + MessageDelegate::kNameH;
     const int contentLeft = rect.left() + MessageDelegate::kRowPadH + kAvatarColW;
 
     // Image: check preview click (Done state) or action strip
     if (msg.type == MessageType::Image) {
+        if (msg.outgoing) {
+            if (msg.status == MessageStatus::Done) {
+                const int contentRight2 = rect.right() - MessageDelegate::kRowPadH - kAvatarColW;
+                const QRect box2(contentRight2 - Theme::Space::ImagePreviewMaxW,
+                                 contentTop, Theme::Space::ImagePreviewMaxW,
+                                 Theme::Space::ImagePreviewH);
+                if (box2.contains(clickX, clickY)) return 4;
+            }
+            return 0;
+        }
+        if (msg.status != MessageStatus::WaitingAccept
+         && msg.status != MessageStatus::Done
+         && msg.status != MessageStatus::Denied) return 0;
         const QRect box(contentLeft, contentTop,
                         Theme::Space::ImagePreviewMaxW, Theme::Space::ImagePreviewH);
         if (msg.status == MessageStatus::Done && box.contains(clickX, clickY))
@@ -537,9 +741,82 @@ int MessageDelegateRenderer::hitTestAction(const QRect &rect, const Message &msg
         return 0;
     }
 
-    // File / Folder
-    const int boxW = (msg.type == MessageType::Folder) ? kFolderBoxW : kFileBoxW;
-    const QRect box(contentLeft, contentTop, boxW, kFileBoxH);
+    // ── Folder ────────────────────────────────────────────────────────────────
+    if (msg.type == MessageType::Folder) {
+        const int boxLeft  = msg.outgoing
+            ? (rect.right() - MessageDelegate::kRowPadH - kAvatarColW) - kFolderBoxW
+            : contentLeft;
+        const int treeTop  = contentTop + kFolderHeaderH;
+
+        // Tree hit test (both outgoing and incoming)
+        if (tree && tree->ready()) {
+            const auto &vis = tree->visible();
+            QList<int> morePos = vis.moreAt.keys();
+            std::sort(morePos.begin(), morePos.end());
+            int row = 0, ri = 0, mi = 0;
+            while (ri < vis.rows.size() || mi < morePos.size()) {
+                while (mi < morePos.size() && morePos[mi] <= ri) {
+                    const int rowY0 = treeTop + row * kTreeRowH;
+                    if (clickY >= rowY0 && clickY < rowY0 + kTreeRowH
+                     && clickX >= boxLeft && clickX < boxLeft + kFolderBoxW) {
+                        if (outTogglePath)
+                            *outTogglePath = vis.moreAt[morePos[mi]].parentPath;
+                        return 7;
+                    }
+                    ++mi; ++row;
+                }
+                if (ri >= vis.rows.size()) break;
+                const int rowY0 = treeTop + row * kTreeRowH;
+                if (clickY >= rowY0 && clickY < rowY0 + kTreeRowH
+                 && clickX >= boxLeft && clickX < boxLeft + kFolderBoxW) {
+                    const TreeRow &tr = vis.rows[ri];
+                    if (tr.isDir) {
+                        if (outTogglePath) *outTogglePath = tr.relPath;
+                        return 6;
+                    }
+                    return 0;
+                }
+                ++ri; ++row;
+            }
+        }
+
+        // Accept/Deny strip (incoming only, below the box)
+        if (!msg.outgoing) {
+            const bool xferring2 = (msg.status == MessageStatus::Transferring);
+            const QRect box(boxLeft, contentTop, kFolderBoxW, folderBoxH(tree, xferring2));
+            const int actionY = box.bottom() + 4;
+            const QFontMetrics afm(Fonts::regular(kActionFontSz));
+            if (clickY >= actionY && clickY <= actionY + afm.height()) {
+                if (msg.status == MessageStatus::WaitingAccept) {
+                    const QString deny     = QStringLiteral("Deny");
+                    const QString acceptTo = QStringLiteral("Save To");
+                    const QString accept   = QStringLiteral("Accept");
+                    const int kGap  = 10;
+                    const int denyX = box.right() - afm.horizontalAdvance(deny);
+                    const int toX   = denyX - kGap - afm.horizontalAdvance(acceptTo);
+                    const int accX  = toX - kGap - afm.horizontalAdvance(accept);
+                    if (clickX >= toX + afm.horizontalAdvance(acceptTo) + kGap / 2) return -1;
+                    if (clickX >= accX + afm.horizontalAdvance(accept) + kGap / 2)  return  3;
+                    if (clickX >= accX - 4)                                          return  1;
+                } else if (msg.status == MessageStatus::Done
+                        || msg.status == MessageStatus::Denied) {
+                    const QString req = QStringLiteral("Request Again");
+                    const int reqX = box.right() - afm.horizontalAdvance(req);
+                    if (clickX >= reqX - 4) return 2;
+                }
+            }
+        }
+        return 0;
+    }
+
+    // ── File ──────────────────────────────────────────────────────────────────
+    const int boxLeft = msg.outgoing
+        ? (rect.right() - MessageDelegate::kRowPadH - kAvatarColW) - kFileBoxW
+        : contentLeft;
+    const QRect box(boxLeft, contentTop, kFileBoxW, kFileBoxH);
+
+    if (msg.outgoing) return 0;
+
     const int actionY      = box.bottom() + 4;
     const QFontMetrics afm(Fonts::regular(kActionFontSz));
     const int actionBottom = actionY + afm.height();
@@ -555,9 +832,9 @@ int MessageDelegateRenderer::hitTestAction(const QRect &rect, const Message &msg
         const int accX  = toX   - kGap - afm.horizontalAdvance(accept);
         const int midDT = toX + afm.horizontalAdvance(acceptTo) + kGap / 2;
         const int midTA = accX + afm.horizontalAdvance(accept)  + kGap / 2;
-        if (clickX >= midDT)              return -1;
-        if (clickX >= midTA)              return  3;
-        if (clickX >= accX - 4)           return  1;
+        if (clickX >= midDT)    return -1;
+        if (clickX >= midTA)    return  3;
+        if (clickX >= accX - 4) return  1;
         return 0;
     }
     if (msg.status == MessageStatus::Done || msg.status == MessageStatus::Denied) {

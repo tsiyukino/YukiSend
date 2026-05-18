@@ -2,11 +2,12 @@
 
 #include <QPainter>
 #include <QRect>
-#include <QHash>
 #include <QImage>
 
 #include "model/Message.h"
 #include "theme/Theme.h"
+#include "FolderTreeState.h"
+#include "utils/ThumbCache.h"
 
 // Row layout constants — aliases into Theme::Space for cross-file consistency.
 namespace MessageDelegate {
@@ -44,24 +45,31 @@ public:
     // Clear entire cache (call when peer changes).
     void clearCache();
 
-    int rowHeight(const Message &msg) const;
+    // tree may be nullptr (no tree / not a folder message).
+    int rowHeight(const Message &msg, const FolderTreeState *tree = nullptr) const;
 
-    // hoverX: widget-relative mouse X, -1 if not hovered.
+    // hoverX/hoverY: widget-relative mouse pos, (-1,-1) if not hovered.
     // selection: active text selection for this message (ignored for non-text).
     // copyFlash: true for the brief "copied!" highlight after clicking Copy.
+    // tree: folder tree state; nullptr if not applicable.
     void draw(QPainter *p, const QRect &rect, const Message &msg,
-              int hoverX,
+              int hoverX, int hoverY,
               const QString &senderName,
               const QColor &avatarColor,
               TextSelection selection = {},
-              bool copyFlash = false);
+              bool copyFlash = false,
+              const FolderTreeState *tree = nullptr);
 
     // Returns hit code: 1=Accept, 3=AcceptTo, -1=Deny, 2=RequestAgain,
-    //   4=ImageOpen, 5=CopyText, 0=miss.
+    //   4=ImageOpen, 5=CopyText, 6=FolderTreeToggle, 7=FolderTreeLoadMore, 0=miss.
+    // When code is 6, outTogglePath receives the relPath of the toggled dir.
+    // When code is 7, outTogglePath receives the parentPath for loadMore.
     // senderName must match what was passed to draw() so copy-glyph positions align.
     int hitTestAction(const QRect &rect, const Message &msg,
                       int clickX, int clickY,
-                      const QString &senderName) const;
+                      const QString &senderName,
+                      const FolderTreeState *tree = nullptr,
+                      QString *outTogglePath = nullptr) const;
 
     // Map an absolute widget-x coordinate to a character index in msg.text.
     // contentLeft must be the x pixel where the text string starts (same
@@ -69,7 +77,7 @@ public:
     static int charAtX(const Message &msg, int absoluteX, int contentLeft);
 
 private:
-    const QImage &thumbnail(const Message &msg);
+    QImage thumbnail(const Message &msg);
 
-    QHash<qint64, QImage> m_thumbnails;
+    ThumbCache m_thumbCache;
 };

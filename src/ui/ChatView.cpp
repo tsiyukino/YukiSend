@@ -17,6 +17,7 @@
 #include "PeerItemDelegate.h"
 #include "theme/Theme.h"
 #include "theme/Fonts.h"
+#include "FolderTreeState.h"
 
 static constexpr int kScrollStep   = 40;
 static constexpr int kBtnThreshold = 40; // px above bottom before button appears
@@ -38,14 +39,34 @@ ChatView::ChatView(QWidget *parent)
 
 }
 
+FolderTreeState *ChatView::treeFor(const Message &msg) {
+    if (msg.type != MessageType::Folder) return nullptr;
+    auto it = m_treestates.find(msg.id);
+    if (it != m_treestates.end()) return &it.value();
+
+    FolderTreeState state;
+    // Always prefer the immutable JSON snapshot stored in the message. Only fall back to
+    // live filesystem scan for pre-snapshot history records that have no folderTree.
+    if (!msg.folderTree.isEmpty()) {
+        state.initFromJson(msg.folderTree, msg.fileName);
+    } else if (!msg.filePath.isEmpty()) {
+        state.init(msg.filePath);
+    }
+
+    if (!state.ready()) return nullptr;
+    return &m_treestates.insert(msg.id, std::move(state)).value();
+}
+
 void ChatView::setPeer(const Peer &peer) {
     m_peer = peer;
+    m_treestates.clear();
     m_delegate.clearCache();
     update();
 }
 
 void ChatView::setMessages(const QList<Message> &messages) {
     m_messages = messages;
+    m_treestates.clear();
     rebuildLayout();
     scrollToBottom();
     update();
@@ -80,6 +101,17 @@ void ChatView::updateMessage(const Message &msg) {
         if (!wasDone && m.status == MessageStatus::Done)
             m_delegate.invalidate(m.id);
 
+        // Reset folder tree only when the batch is fully done and we have the
+        // root folder path. Individual file completions (Transferring + filePath)
+        // must NOT reset the tree — they carry single-file paths, not the root.
+        if (m.type == MessageType::Folder
+         && m.status == MessageStatus::Done
+         && !m.filePath.isEmpty()) {
+            auto it = m_treestates.find(m.id);
+            if (it != m_treestates.end() && it->rootPath() != m.filePath)
+                m_treestates.erase(it); // will be lazily re-initialised from rootPath
+        }
+
         rebuildLayout();
         update();
         return;
@@ -94,14 +126,17 @@ void ChatView::rebuildLayout() {
     int y = 0;
     for (const auto &msg : m_messages) {
         m_rowOffsets.append(y);
-        y += m_delegate.rowHeight(msg);
+        y += m_delegate.rowHeight(msg, treeFor(msg));
     }
 }
 
 int ChatView::contentHeight() const {
     if (m_messages.isEmpty()) return 0;
     const int last = m_messages.size() - 1;
-    return m_rowOffsets[last] + m_delegate.rowHeight(m_messages[last]);
+    // const_cast needed because treeFor() may lazily init the state.
+    return m_rowOffsets[last]
+         + m_delegate.rowHeight(m_messages[last],
+               const_cast<ChatView *>(this)->treeFor(m_messages[last]));
 }
 
 int ChatView::listTop() const { return Theme::Space::ChatHeaderH; }
@@ -138,7 +173,10 @@ int ChatView::messageAt(int y) const {
     if (contentY < 0) return -1;
     for (int i = m_messages.size() - 1; i >= 0; --i) {
         if (m_rowOffsets[i] <= contentY) {
-            if (contentY < m_rowOffsets[i] + m_delegate.rowHeight(m_messages[i]))
+            const int h = m_delegate.rowHeight(
+                m_messages[i],
+                const_cast<ChatView *>(this)->treeFor(m_messages[i]));
+            if (contentY < m_rowOffsets[i] + h)
                 return i;
             break;
         }
@@ -196,9 +234,11 @@ void ChatView::mouseMoveEvent(QMouseEvent *event) {
         setCursor(Qt::ArrowCursor);
     }
 
-    if (idx != m_hoverIndex || x != m_hoverX) {
+    const int y = event->pos().y();
+    if (idx != m_hoverIndex || x != m_hoverX || y != m_hoverY) {
         m_hoverIndex = idx;
         m_hoverX     = (idx >= 0) ? x : -1;
+        m_hoverY     = (idx >= 0) ? y : -1;
         update();
     }
 }
@@ -206,6 +246,7 @@ void ChatView::mouseMoveEvent(QMouseEvent *event) {
 void ChatView::leaveEvent(QEvent *) {
     m_hoverIndex       = -1;
     m_hoverX           = -1;
+    m_hoverY           = -1;
     m_btnHovered       = false;
     m_hamburgerHovered = false;
     setCursor(Qt::ArrowCursor);
@@ -269,14 +310,17 @@ void ChatView::mousePressEvent(QMouseEvent *event) {
     if (idx < 0 || idx >= m_messages.size()) return;
 
     const Message &msg  = m_messages[idx];
+    FolderTreeState *msgTree = treeFor(msg);
     const int rowTop    = m_rowOffsets[idx] - m_scrollOffset + listTop();
-    const QRect rowRect(0, rowTop, width(), m_delegate.rowHeight(msg));
+    const QRect rowRect(0, rowTop, width(), m_delegate.rowHeight(msg, msgTree));
 
     const QString senderName = msg.outgoing
         ? QStringLiteral("You")
         : (m_peer.has_value() ? m_peer->displayName : msg.peerId);
+    QString togglePath;
     const int hit = m_delegate.hitTestAction(
-        rowRect, msg, event->pos().x(), event->pos().y(), senderName);
+        rowRect, msg, event->pos().x(), event->pos().y(), senderName,
+        msgTree, &togglePath);
 
     // Any click clears existing selection
     m_selMsgIdx = -1;
@@ -303,6 +347,22 @@ void ChatView::mousePressEvent(QMouseEvent *event) {
     case  3: emit acceptToRequested(msg.id);     break;
     case -1: emit denyRequested(msg.id);         break;
     case  2: emit requestAgainRequested(msg.id); break;
+    case  6: {
+        if (msgTree) {
+            msgTree->toggle(togglePath);
+            rebuildLayout();
+            update();
+        }
+        break;
+    }
+    case  7: {
+        if (msgTree) {
+            msgTree->loadMore(togglePath);
+            rebuildLayout();
+            update();
+        }
+        break;
+    }
     case  5: {
         // Copy — copy selection if active for this message, else full text
         const QString toCopy = (m_selMsgIdx == idx && m_selFrom < m_selTo)
@@ -472,7 +532,8 @@ void ChatView::paintEvent(QPaintEvent *) {
 
     for (int i = 0; i < m_messages.size(); ++i) {
         const int rowTop = m_rowOffsets[i];
-        const int rowH   = m_delegate.rowHeight(m_messages[i]);
+        const int rowH   = m_delegate.rowHeight(m_messages[i],
+                               const_cast<ChatView *>(this)->treeFor(m_messages[i]));
         if (rowTop + rowH < visTop)    continue;
         if (rowTop        > visBottom) break;
 
@@ -485,7 +546,8 @@ void ChatView::paintEvent(QPaintEvent *) {
             : PeerItemDelegate::avatarColor(msg.peerId);
 
         const QRect rowRect(0, rowTop - m_scrollOffset + listTop(), width(), rowH);
-        const int hov = (i == m_hoverIndex) ? m_hoverX : -1;
+        const int hov  = (i == m_hoverIndex) ? m_hoverX : -1;
+        const int hovY = (i == m_hoverIndex) ? m_hoverY : -1;
 
         // Pass active selection only for the message currently being selected
         TextSelection sel;
@@ -494,8 +556,8 @@ void ChatView::paintEvent(QPaintEvent *) {
             sel.to   = m_selTo;
         }
 
-        m_delegate.draw(&p, rowRect, msg, hov, senderName, avatarCol, sel,
-                        i == m_flashMsgIdx);
+        m_delegate.draw(&p, rowRect, msg, hov, hovY, senderName, avatarCol, sel,
+                        i == m_flashMsgIdx, treeFor(msg));
     }
 
     // Draw the floating button above the clip region

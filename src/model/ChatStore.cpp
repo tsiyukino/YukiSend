@@ -3,9 +3,9 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <QJsonDocument>
 
 static constexpr const char *kDbName = "yukisend_chat";
 
@@ -41,11 +41,13 @@ static void ensureSchema(QSqlDatabase &db) {
             status           INTEGER NOT NULL DEFAULT 0,
             timestamp        INTEGER NOT NULL,
             bytes_transferred INTEGER DEFAULT 0,
-            remote_msg_id    INTEGER DEFAULT -1
+            remote_msg_id    INTEGER DEFAULT -1,
+            folder_tree      TEXT    DEFAULT NULL
         )
     )");
-    // Migration: add column if upgrading from an older db that lacks it.
+    // Migrations: add columns when upgrading from older databases.
     q.exec(R"(ALTER TABLE messages ADD COLUMN remote_msg_id INTEGER DEFAULT -1)");
+    q.exec(R"(ALTER TABLE messages ADD COLUMN folder_tree TEXT DEFAULT NULL)");
     q.exec(R"(
         CREATE INDEX IF NOT EXISTS idx_messages_peer
         ON messages(peer_id, timestamp)
@@ -75,16 +77,17 @@ static Message rowToMessage(const QSqlQuery &q) {
     m.timestamp        = QDateTime::fromMSecsSinceEpoch(q.value(10).toLongLong());
     m.bytesTransferred = q.value(11).toLongLong();
     m.remoteMsgId      = q.value(12).isNull() ? -1 : q.value(12).toLongLong();
+    const QString treeJson = q.value(13).toString();
+    if (!treeJson.isEmpty())
+        m.folderTree = QJsonDocument::fromJson(treeJson.toUtf8()).array();
     return m;
 }
 
 // ── ChatStore ─────────────────────────────────────────────────────────────────
 
-ChatStore::ChatStore(QObject *parent)
+ChatStore::ChatStore(const QString &dir, QObject *parent)
     : QObject(parent), d(new Private)
 {
-    const QString dir = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
 
     d->db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), kDbName);
@@ -144,8 +147,8 @@ qint64 ChatStore::addMessage(const Message &msg) {
         INSERT INTO messages
             (peer_id, type, outgoing, text, file_name, file_path,
              file_size, file_hash, status, timestamp, bytes_transferred,
-             remote_msg_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+             remote_msg_id, folder_tree)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
     )"));
     q.addBindValue(msg.peerId);
     q.addBindValue(static_cast<int>(msg.type));
@@ -159,6 +162,11 @@ qint64 ChatStore::addMessage(const Message &msg) {
     q.addBindValue(msg.timestamp.toMSecsSinceEpoch());
     q.addBindValue(msg.bytesTransferred);
     q.addBindValue(msg.remoteMsgId);
+    if (msg.folderTree.isEmpty())
+        q.addBindValue(QVariant());
+    else
+        q.addBindValue(QString::fromUtf8(
+            QJsonDocument(msg.folderTree).toJson(QJsonDocument::Compact)));
     if (!d->exec(q)) return -1;
     return q.lastInsertId().toLongLong();
 }
@@ -182,7 +190,7 @@ QList<Message> ChatStore::messages(const QString &peerId) const {
     QSqlQuery q(d->db);
     q.prepare(QStringLiteral(
         "SELECT id,peer_id,type,outgoing,text,file_name,file_path,"
-        "file_size,file_hash,status,timestamp,bytes_transferred,remote_msg_id "
+        "file_size,file_hash,status,timestamp,bytes_transferred,remote_msg_id,folder_tree "
         "FROM messages WHERE peer_id=? ORDER BY timestamp ASC"));
     q.addBindValue(peerId);
     QList<Message> result;

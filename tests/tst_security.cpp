@@ -413,12 +413,12 @@ private slots:
 
     void fingerprint_unknownPeerReturnsEmpty() {
         // A peer that has never been trusted has no stored fingerprint.
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         QCOMPARE(store.knownFingerprint(QStringLiteral("nonexistent-peer-id")), QString());
     }
 
     void fingerprint_trustStoresFingerprint() {
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         const QString peerId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp     = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
@@ -428,7 +428,7 @@ private slots:
 
     void fingerprint_trustOverwritesOldFingerprint() {
         // When a user accepts a new fingerprint (reinstall scenario), it replaces the old one.
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         const QString peerId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp1    = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp2    = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -442,7 +442,7 @@ private slots:
 
     void fingerprint_mismatchDetected() {
         // Simulates App-level check: peer broadcasts fp2, but store has fp1.
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         const QString peerId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp1    = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp2    = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -456,7 +456,7 @@ private slots:
     void fingerprint_spoofingScenario() {
         // Attack: attacker clones the peer's UUID but uses their own fingerprint.
         // The trust store must reject the cloned fingerprint.
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         const QString legitimatePeerId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString legitimateFp     = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString attackerFp       = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -472,7 +472,7 @@ private slots:
 
     void fingerprint_multiplePeersAreIndependent() {
         // Trust decisions for different peers must not interfere.
-        PeerStore store;
+        QTemporaryDir tmp; PeerStore store{tmp.path()};
         const QString id1 = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString id2 = QUuid::createUuid().toString(QUuid::WithoutBraces);
         const QString fp1 = QUuid::createUuid().toString(QUuid::WithoutBraces);

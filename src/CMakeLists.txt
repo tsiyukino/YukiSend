@@ -20,6 +20,7 @@ add_executable(YukiSend
     ui/ChatView.cpp
     ui/ChatInputBar.cpp
     ui/MessageDelegate.cpp
+    ui/FolderTreeState.cpp
     ui/MediaViewer.cpp
     ui/PeerListWidget.cpp
     ui/PeerItemDelegate.cpp
@@ -30,6 +31,7 @@ add_executable(YukiSend
     theme/Fonts.cpp
     utils/FileUtils.cpp
     utils/ImageUtils.cpp
+    utils/ThumbCache.cpp
     model/ChatStore.cpp
     model/AppSettings.cpp
     model/UnreadStore.cpp
