@@ -160,13 +160,21 @@ to fit with a 48 px margin, and dismisses on click or Escape.
 
 ## UI design language
 
-Telegram Desktop day-blue theme: clean, minimal, pixel-precise. All spacing,
-sizing, and color values are defined as `constexpr` in `src/theme/Theme.h` —
+Notion-style: warm whites, near-black text, achromatic hover/selection states,
+accent colour reserved for confirmations and focus rings only. All spacing,
+sizing, and colour values are defined as `constexpr` in `src/theme/Theme.h` —
 no magic numbers in widget code. Controls inherit `QWidget` and override
 `paintEvent()`. Animations use the `Animator` class (`src/ui/Animator.h`), a
 lightweight timer-driven 0→1 progress value with three easing functions
 (`easeOutCirc`, `easeOutCubic`, `linear`). Font rendering uses
 platform-appropriate hinting.
+
+Key colour semantics:
+- `NavBarBg` / `ItemHover` / `ItemSelected` — warm greys (`#F7F6F3`, `#EFEFEE`, `#E8E8E7`)
+- `TextPrimary` — near-black `#1A1A1A`; `TextSecondary` — `#9B9A97`
+- `Accent` (`#2383E2`) — used only for progress bars, copy-flash ✓, drop overlay
+- Selection and hover states carry no colour: the indicator is a 2–3 px
+  near-black left stripe + achromatic background fill
 
 High-DPI note: Qt 6 scales logical pixels by `devicePixelRatio` automatically.
 All constants in `Theme.h` are plain logical pixel values — no manual DPI

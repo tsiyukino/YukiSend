@@ -7,15 +7,16 @@
 
 namespace PeerItemDelegate {
 
+// Muted avatar palette — lower saturation to fit Notion's calm aesthetic
 static const QColor kAvatarColors[] = {
-    { 198,  55,  55 },
-    { 210, 105,  30 },
-    {  41, 128, 185 },
-    {  39, 174,  96 },
-    { 142,  68, 173 },
-    {  22, 160, 133 },
-    { 211,  84,   0 },
-    {  52,  73,  94 },
+    { 180,  74,  74 },
+    { 187, 120,  60 },
+    {  66, 133, 185 },
+    {  68, 168, 116 },
+    { 130,  90, 168 },
+    {  52, 152, 138 },
+    { 180, 100,  40 },
+    {  90, 105, 118 },
 };
 
 QColor avatarColor(const QString &id) {
@@ -56,9 +57,9 @@ void draw(QPainter *painter, const QRect &rect, const Peer &peer,
     painter->setRenderHint(QPainter::TextAntialiasing);
 
     // --- Background ---
-    // Layer: normal → hover → selected, each cross-fading independently.
-    // First blend hover over normal, then blend selected over that.
-    if (hoverProgress > 0.0) {
+    // Hover: fade ItemHover over SidebarBg. Selected: ItemSelected (warm grey, no blue).
+    // Both use alpha-based cross-fade; selected wins over hover.
+    if (hoverProgress > 0.0 && selectedProgress < 1.0) {
         QColor bg = lerp(Theme::Color::SidebarBg, Theme::Color::ItemHover, hoverProgress);
         painter->fillRect(rect, bg);
     }
@@ -66,6 +67,14 @@ void draw(QPainter *painter, const QRect &rect, const Peer &peer,
         QColor selBg = Theme::Color::ItemSelected;
         selBg.setAlphaF(selectedProgress);
         painter->fillRect(rect, selBg);
+    }
+
+    // Left-side indicator stripe: 3px near-black, fades in with selectedProgress
+    if (selectedProgress > 0.0) {
+        QColor stripe(26, 26, 26);
+        stripe.setAlphaF(selectedProgress * 0.85);
+        painter->fillRect(QRect(rect.left(), rect.top() + 8, 3, rect.height() - 16),
+                          stripe);
     }
 
     // --- Avatar ---
@@ -96,19 +105,11 @@ void draw(QPainter *painter, const QRect &rect, const Peer &peer,
 
     // Offline peers use a dimmer text color as base.
     const QColor basePrimary   = isOnline ? Theme::Color::TextPrimary   : Theme::Color::TextSecondary;
-    const QColor baseSecondary = isOnline ? Theme::Color::TextSecondary : QColor(180, 180, 180);
+    const QColor baseSecondary = isOnline ? Theme::Color::TextSecondary : QColor(189, 188, 185);
 
-    // Interpolate text colors: normal/hover → selected (white)
-    const QColor nameColor = lerp(
-        basePrimary,
-        Theme::Color::TextOnAccent,
-        selectedProgress
-    );
-    const QColor captionColor = lerp(
-        baseSecondary,
-        Theme::Color::TextOnAccent,
-        selectedProgress
-    );
+    // No colour inversion on selection: text stays dark regardless of state.
+    const QColor nameColor    = basePrimary;
+    const QColor captionColor = baseSecondary;
 
     // Name — Inter Medium
     const QFont nameFont = Fonts::medium(Theme::Font::SizeBody);
@@ -150,13 +151,9 @@ void draw(QPainter *painter, const QRect &rect, const Peer &peer,
         const int bx = rect.right() - kBadgePadR - pillW;
         const int by = rect.top()   + (rect.height() - kBadgeH) / 2;
 
-        // Badge background: white on selected (accent bg), accent on normal.
-        const QColor badgeBg = selectedProgress > 0.5
-            ? Qt::white
-            : Theme::Color::Accent;
-        const QColor badgeFg = selectedProgress > 0.5
-            ? Theme::Color::Accent
-            : Qt::white;
+        // Badge always: accent background, white text. No inversion on selection.
+        const QColor badgeBg = Theme::Color::Accent;
+        const QColor badgeFg = Qt::white;
 
         painter->setPen(Qt::NoPen);
         painter->setBrush(badgeBg);

@@ -425,25 +425,24 @@ void ChatView::paintScrollButton(QPainter &p) const {
 
     const QRect btn = scrollButtonRect();
 
-    // Drop shadow (medium elevation: 4px offset, 4px blur, 12% black)
+    // Drop shadow — soft, low opacity
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0, 0, 0, 30));
-    p.drawEllipse(btn.adjusted(2, 4, 2, 4));
+    p.setBrush(QColor(0, 0, 0, 18));
+    p.drawEllipse(btn.adjusted(1, 3, 1, 3));
 
-    // Circle fill
-    const QColor base = m_btnHovered ? Theme::Color::AccentHover : Theme::Color::Accent;
+    // Circle fill: white base, very slightly grey on hover
+    const QColor base = m_btnHovered ? QColor(242, 242, 241) : QColor(255, 255, 255);
     p.setBrush(base);
+    p.setPen(QPen(Theme::Color::Divider, 1.0));
     p.drawEllipse(btn);
 
-    // Chevron-down (three lines forming a ˅ shape)
+    // Chevron-down — near-black
     const int cx = btn.center().x();
     const int cy = btn.center().y();
-    QPen chevronPen(Qt::white, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    QPen chevronPen(QColor(55, 55, 55), 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     p.setPen(chevronPen);
     p.setBrush(Qt::NoBrush);
-    // Left arm: top-left → centre
     p.drawLine(cx - 6, cy - 3, cx, cy + 4);
-    // Right arm: centre → top-right
     p.drawLine(cx, cy + 4, cx + 6, cy - 3);
 
     p.restore();
@@ -514,10 +513,10 @@ void ChatView::paintEvent(QPaintEvent *) {
         for (int d = 1; d <= 6; ++d)
             p.fillRect(r.adjusted(-d, -d, d, d), frost);
 
-        // Base tint
-        p.fillRect(r, QColor(64, 167, 227, 55));
+        // Base tint — Notion blue at low opacity
+        p.fillRect(r, QColor(35, 131, 226, 45));
         // Additional white frost pass for the milky look
-        p.fillRect(r, QColor(255, 255, 255, 60));
+        p.fillRect(r, QColor(255, 255, 255, 70));
 
         // Dashed border
         const QRect border = r.adjusted(16, 16, -16, -16);

@@ -147,7 +147,8 @@ private:
                         const QString &label, const QString &desc = {}) const;
     void paintActionBtn(QPainter &p, const QRect &r,
                         bool hover, const QString &label,
-                        const QColor &bg, const QColor &hoverBg) const;
+                        const QColor &bg, const QColor &hoverBg,
+                        bool lightText = false) const;
     void paintPeersTab(QPainter &p, int tab,
                        bool selected, bool hovered, const QRect &r) const;
 

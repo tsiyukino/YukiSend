@@ -2,8 +2,8 @@
 
 #include <QColor>
 
-// All visual constants derived directly from Telegram Desktop's day-blue theme.
-// Source: Telegram/Resources/day-blue.tdesktop-theme and dialogs.style
+// Notion-style palette. Warm whites, near-black text, accent only for
+// confirmations and focus rings. No colour in selection/hover states.
 namespace Theme {
 
 namespace Color {
@@ -11,34 +11,34 @@ namespace Color {
 // Backgrounds
 inline const QColor WindowBg      { 255, 255, 255 };
 inline const QColor SidebarBg     { 255, 255, 255 };
-inline const QColor NavBarBg      { 245, 245, 245 };
-inline const QColor ItemHover     { 241, 241, 241 };
-inline const QColor ItemSelected  {  65, 159, 217 };
+inline const QColor NavBarBg      { 247, 246, 243 };  // Notion left-panel warm grey
+inline const QColor ItemHover     { 239, 239, 238 };  // very light warm grey
+inline const QColor ItemSelected  { 232, 232, 231 };  // slightly darker warm grey, no blue
 
 // Text — normal state
-inline const QColor TextPrimary   {  34,  34,  34 };
-inline const QColor TextSecondary { 153, 153, 153 };
+inline const QColor TextPrimary   {  26,  26,  26 };  // near-black
+inline const QColor TextSecondary { 155, 154, 151 };  // Notion secondary text
 
-// Text — selected state
-inline const QColor TextOnAccent  { 255, 255, 255 };
+// Text — selected state (same as primary: selection has no colour inversion)
+inline const QColor TextOnAccent  {  26,  26,  26 };
 
-// Accent
-inline const QColor Accent        {  64, 167, 227 };
-inline const QColor AccentHover   {  50, 140, 200 };
-inline const QColor AccentPressed {  40, 115, 170 };
+// Accent — used only for focus rings, progress fill, copy-flash ✓, drop overlay
+inline const QColor Accent        {  35, 131, 226 };  // Notion blue
+inline const QColor AccentHover   {  24, 112, 200 };
+inline const QColor AccentPressed {  17,  92, 172 };
 
-// Dividers
-inline const QColor Divider       { 224, 224, 224 };
+// Dividers — near-invisible hairlines
+inline const QColor Divider       { 233, 233, 231 };
 
 // Search bar
-inline const QColor SearchBg      { 241, 241, 241 };
-inline const QColor SearchBorder  {  84, 195, 243 };
-inline const QColor SearchIcon    { 153, 153, 153 };
-inline const QColor Placeholder   { 170, 170, 170 };
+inline const QColor SearchBg      { 239, 239, 238 };  // matches ItemHover
+inline const QColor SearchBorder  { 155, 154, 151 };  // subtle grey focus ring
+inline const QColor SearchIcon    { 155, 154, 151 };
+inline const QColor Placeholder   { 189, 188, 185 };
 
 // Transfer progress bar
-inline const QColor ProgressBg    { 224, 224, 224 };
-inline const QColor ProgressFg    {  64, 167, 227 };
+inline const QColor ProgressBg    { 233, 233, 231 };
+inline const QColor ProgressFg    {  35, 131, 226 };  // Notion blue
 
 } // namespace Color
 

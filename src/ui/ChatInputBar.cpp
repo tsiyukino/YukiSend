@@ -117,17 +117,8 @@ void ChatInputBar::paintEvent(QPaintEvent *) {
 
     p.fillRect(rect(), Theme::Color::WindowBg);
 
-    // Top border: Divider at rest → SearchBorder when focused
-    const double focusProg = m_focusAnim.value(m_focused ? 1.0 : 0.0);
-    {
-        const QColor a = Theme::Color::Divider;
-        const QColor b = Theme::Color::SearchBorder;
-        p.fillRect(0, 0, width(), 1, QColor(
-            int(a.red()   + (b.red()   - a.red())   * focusProg),
-            int(a.green() + (b.green() - a.green()) * focusProg),
-            int(a.blue()  + (b.blue()  - a.blue())  * focusProg)
-        ));
-    }
+    // Top border: static hairline, no colour change on focus
+    p.fillRect(0, 0, width(), 1, Theme::Color::Divider);
 
     if (!m_pendingImage.isNull()) {
         // ── Image compose mode ────────────────────────────────────────────────
@@ -216,7 +207,7 @@ void ChatInputBar::paintEvent(QPaintEvent *) {
             const QFontMetrics fm(Fonts::regular(Theme::Font::SizeBody));
             const int cx = inputRect().left()
                          + fm.horizontalAdvance(m_text.left(m_cursorPos));
-            p.setPen(QPen(Theme::Color::Accent, 1.5));
+            p.setPen(QPen(Theme::Color::TextPrimary, 1.0));
             p.drawLine(cx, kBarH / 2 - 8, cx, kBarH / 2 + 8);
         }
     }
@@ -230,10 +221,10 @@ void ChatInputBar::paintEvent(QPaintEvent *) {
         p.drawLine(sepX, sepY1, sepX, sepY2);
     }
 
-    // File / Folder buttons (always visible)
+    // File / Folder buttons: secondary → primary on hover (no blue)
     auto drawBtn = [&](const QRect &r, double hov, const QString &label) {
         const QColor a = Theme::Color::TextSecondary;
-        const QColor b = Theme::Color::Accent;
+        const QColor b = Theme::Color::TextPrimary;
         p.setFont(Fonts::medium(Theme::Font::SizeCaption));
         p.setPen(QColor(int(a.red()   + (b.red()   - a.red())   * hov),
                         int(a.green() + (b.green() - a.green()) * hov),

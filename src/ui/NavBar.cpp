@@ -46,12 +46,44 @@ QRect NavBar::iconRect(int index) const {
     }
 }
 
+void NavBar::buildIconCache() const {
+    // Render at physical pixel size for crisp results on HiDPI screens.
+    const qreal dpr   = devicePixelRatioF();
+    const int   phys  = qRound(kIconSize * dpr);  // physical pixels
+
+    const QColor tints[2] = { Theme::Color::TextSecondary, QColor(26, 26, 26) };
+    for (int i = 0; i < 4; ++i) {
+        QSvgRenderer svg(QString::fromLatin1(kIconPaths[i]));
+        if (!svg.isValid()) continue;
+        for (int t = 0; t < 2; ++t) {
+            QPixmap pix(phys, phys);
+            pix.setDevicePixelRatio(dpr);
+            pix.fill(Qt::transparent);
+            QPainter pp(&pix);
+            pp.setRenderHint(QPainter::Antialiasing);
+            pp.setRenderHint(QPainter::SmoothPixmapTransform);
+            svg.render(&pp, QRectF(0, 0, kIconSize, kIconSize));
+            pp.end();
+
+            QPainter tp(&pix);
+            tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
+            tp.fillRect(QRect(0, 0, phys, phys), tints[t]);
+            tp.end();
+
+            m_iconCache[i][t] = pix;
+        }
+    }
+    m_cacheValid = true;
+}
+
 void NavBar::paintEvent(QPaintEvent *) {
+    if (!m_cacheValid) buildIconCache();
+
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
     p.fillRect(rect(), Theme::Color::NavBarBg);
 
-    // Right border
+    // Right border hairline
     p.fillRect(width() - 1, 0, 1, height(), Theme::Color::Divider);
 
     for (int i = 0; i < 4; ++i) {
@@ -59,34 +91,30 @@ void NavBar::paintEvent(QPaintEvent *) {
         const double hov    = m_hoverAnim[i].value((i == m_hoverIndex) ? 1.0 : 0.0);
         const QRect  btn    = iconRect(i);
 
-        // Button background
-        if (active || hov > 0.0) {
-            QColor bg = active ? Theme::Color::Accent : Theme::Color::ItemHover;
-            if (!active) bg.setAlphaF(hov);
+        // Hover: fade in ItemHover background; active: ItemSelected (no blue)
+        if (active) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(Theme::Color::ItemSelected);
+            p.drawRoundedRect(btn, kRadius, kRadius);
+        } else if (hov > 0.0) {
+            QColor bg = Theme::Color::ItemHover;
+            bg.setAlphaF(hov);
             p.setPen(Qt::NoPen);
             p.setBrush(bg);
             p.drawRoundedRect(btn, kRadius, kRadius);
         }
 
-        // SVG icon — tinted white when active, grey otherwise
-        QSvgRenderer svg(QString::fromLatin1(kIconPaths[i]));
-        if (svg.isValid()) {
-            // Paint SVG into a pixmap so we can tint it
-            QPixmap pix(kIconSize, kIconSize);
-            pix.fill(Qt::transparent);
-            QPainter pp(&pix);
-            svg.render(&pp);
-            pp.end();
+        // Active indicator: 2px near-black left stripe inside button rect
+        if (active) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(26, 26, 26, 200));
+            p.drawRoundedRect(QRect(btn.left(), btn.top() + 6, 2, btn.height() - 12),
+                              1, 1);
+        }
 
-            // Apply color tint via composition
-            const QColor tint = active
-                ? QColor(255, 255, 255)
-                : QColor(Theme::Color::TextSecondary);
-            QPainter tp(&pix);
-            tp.setCompositionMode(QPainter::CompositionMode_SourceIn);
-            tp.fillRect(pix.rect(), tint);
-            tp.end();
-
+        // Draw cached pixmap — [1] = near-black (active), [0] = grey
+        const QPixmap &pix = m_iconCache[i][active ? 1 : 0];
+        if (!pix.isNull()) {
             const int ix = btn.left() + (kBtnSize - kIconSize) / 2;
             const int iy = btn.top()  + (kBtnSize - kIconSize) / 2;
             p.drawPixmap(ix, iy, pix);
@@ -117,6 +145,15 @@ void NavBar::leaveEvent(QEvent *) {
         m_hoverAnim[m_hoverIndex].start([this] { update(); }, 1.0, 0.0, kHoverMs);
         m_hoverIndex = -1;
         setCursor(Qt::ArrowCursor);
+    }
+}
+
+void NavBar::changeEvent(QEvent *event) {
+    QWidget::changeEvent(event);
+    // Screen change (e.g. dragged to HiDPI monitor) — rebuild at new DPR.
+    if (event->type() == QEvent::ScreenChangeInternal) {
+        m_cacheValid = false;
+        update();
     }
 }
 

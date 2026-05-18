@@ -67,18 +67,14 @@ void SearchBar::paintEvent(QPaintEvent *) {
     p.setBrush(Theme::Color::SearchBg);
     p.drawRoundedRect(pill, kRadius, kRadius);
 
-    // Focus border — #54c3f3, animates in/out
+    // Focus border — 1px grey, fades in/out. Notion style: subtle, not blue.
     if (focusProg > 0.001) {
         QColor border = Theme::Color::SearchBorder;
-        border.setAlphaF(focusProg);
-        p.setPen(QPen(border, kBorderW));
+        border.setAlphaF(focusProg * 0.6);
+        p.setPen(QPen(border, 1.0));
         p.setBrush(Qt::NoBrush);
-        // Inset by half border width so it draws inside the pill
-        const QRectF borderRect = QRectF(pill).adjusted(
-            kBorderW * 0.5, kBorderW * 0.5,
-            -kBorderW * 0.5, -kBorderW * 0.5
-        );
-        p.drawRoundedRect(borderRect, kRadius - kBorderW * 0.5, kRadius - kBorderW * 0.5);
+        const QRectF borderRect = QRectF(pill).adjusted(0.5, 0.5, -0.5, -0.5);
+        p.drawRoundedRect(borderRect, kRadius - 0.5, kRadius - 0.5);
     }
 
     // Magnifier icon — centred in the left icon area
@@ -108,14 +104,14 @@ void SearchBar::paintEvent(QPaintEvent *) {
         p.drawText(ir, Qt::AlignVCenter | Qt::AlignLeft, m_text);
     }
 
-    // Text cursor
+    // Text cursor — near-black, thin
     if (m_focused) {
         const QFont f = Fonts::regular(Theme::Font::SizeNormal);
         const QFontMetrics fm(f);
         const int cx = ir.left() + fm.horizontalAdvance(m_text.left(m_cursorPos));
         const int cy1 = pill.top()    + 6;
         const int cy2 = pill.bottom() - 6;
-        p.setPen(QPen(Theme::Color::Accent, 1.5));
+        p.setPen(QPen(Theme::Color::TextPrimary, 1.0));
         p.drawLine(cx, cy1, cx, cy2);
     }
 }

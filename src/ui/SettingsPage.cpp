@@ -37,14 +37,13 @@ static constexpr int kTabH        =  28;
 static constexpr int kTabW        =  80;
 static constexpr int kTabGap      =   4;
 
-static const QColor kPageBg    { 245, 246, 247 };
+static const QColor kPageBg    { 251, 251, 250 };  // Notion page background (near-white warm)
 static const QColor kCardBg    { 255, 255, 255 };
-static const QColor kCardBorder{ 218, 220, 224 };
-static const QColor kSecTitle  { 110, 110, 120 };
-static const QColor kDescText  { 140, 140, 150 };
-static const QColor kSideBg   { 255, 255, 255 };
-static const QColor kSideSel  {  64, 167, 227 };
-static const QColor kSideHov  { 240, 240, 240 };
+static const QColor kCardBorder{ 233, 233, 231 };  // matches Theme::Color::Divider
+static const QColor kSecTitle  { 155, 154, 151 };  // matches Theme::Color::TextSecondary
+static const QColor kDescText  { 155, 154, 151 };
+static const QColor kSideBg   { 247, 246, 243 };  // matches Theme::Color::NavBarBg
+static const QColor kSideHov  { 239, 239, 238 };  // matches Theme::Color::ItemHover
 
 static const char *kCatLabels[] = {
     "General", "Window", "Startup", "Messages", "History", "Peers", "About"
@@ -61,9 +60,9 @@ public:
         setAttribute(Qt::WA_TranslucentBackground);
         setFont(Fonts::regular(Theme::Font::SizeBody));
         setStyleSheet(QStringLiteral(
-            "QLineEdit { background:transparent; color:rgb(34,34,34);"
+            "QLineEdit { background:transparent; color:rgb(26,26,26);"
             "border:none; padding:0px 8px;"
-            "selection-background-color:rgb(180,220,245); }"));
+            "selection-background-color:rgb(210,210,208); }"));
     }
 protected:
     void paintEvent(QPaintEvent *e) override {
@@ -74,8 +73,9 @@ protected:
         p.setBrush(kCardBg);
         p.drawRoundedRect(rect(), Theme::Space::RadiusS, Theme::Space::RadiusS);
         p.setBrush(Qt::NoBrush);
-        const QColor border = focused ? Theme::Color::SearchBorder : kCardBorder;
-        const int bw = focused ? 2 : 1;
+        // Focus: slightly darker grey border, never blue
+        const QColor border = focused ? QColor(155, 154, 151) : kCardBorder;
+        const int bw = 1;
         p.setPen(QPen(border, bw));
         p.drawRoundedRect(QRectF(rect()).adjusted(bw/2., bw/2., -bw/2., -bw/2.),
                           Theme::Space::RadiusS, Theme::Space::RadiusS);
@@ -309,8 +309,8 @@ static QScrollArea *makeScrollArea(QWidget *inner) {
     sa->setFrameShape(QFrame::NoFrame);
     sa->setStyleSheet(QStringLiteral(
         "QScrollArea { background: white; border: none; }"
-        "QScrollBar:vertical { width: 6px; background: transparent; }"
-        "QScrollBar::handle:vertical { background: rgba(0,0,0,30%); border-radius: 3px; }"
+        "QScrollBar:vertical { width: 5px; background: transparent; }"
+        "QScrollBar::handle:vertical { background: rgba(0,0,0,18%); border-radius: 2px; }"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"));
     return sa;
 }
@@ -562,9 +562,6 @@ void SettingsPage::paintCard(QPainter &p, int top, int rows) const {
     const int padX = crLeft() + kPagePadH;
     const int padW = width() - crLeft() - kPagePadH * 2;
     const QRect r(padX, top, padW, kRowH * rows);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0,0,0,8));
-    p.drawRoundedRect(r.adjusted(0,1,0,2), kCardRadius, kCardRadius);
     p.setBrush(kCardBg);
     p.setPen(QPen(kCardBorder, 1));
     p.drawRoundedRect(r, kCardRadius, kCardRadius);
@@ -574,9 +571,6 @@ void SettingsPage::paintCustomCard(QPainter &p, int top, int h) const {
     const int padX = crLeft() + kPagePadH;
     const int padW = width() - crLeft() - kPagePadH * 2;
     const QRect r(padX, top, padW, h);
-    p.setPen(Qt::NoPen);
-    p.setBrush(QColor(0,0,0,8));
-    p.drawRoundedRect(r.adjusted(0,1,0,2), kCardRadius, kCardRadius);
     p.setBrush(kCardBg);
     p.setPen(QPen(kCardBorder, 1));
     p.drawRoundedRect(r, kCardRadius, kCardRadius);
@@ -591,10 +585,10 @@ void SettingsPage::paintRowDivider(QPainter &p, int y) const {
 void SettingsPage::paintSectionLabel(QPainter &p, int y, const QString &text) const {
     const int padX = crLeft() + kPagePadH;
     const int padW = width() - crLeft() - kPagePadH * 2;
-    p.setFont(Fonts::semiBold(kSecFontSz));
+    p.setFont(Fonts::regular(kSecFontSz));
     p.setPen(kSecTitle);
     p.drawText(QRect(padX, y, padW, kSecLineH),
-               Qt::AlignVCenter | Qt::AlignLeft, text.toUpper());
+               Qt::AlignVCenter | Qt::AlignLeft, text);
 }
 
 void SettingsPage::paintRowLabel(QPainter &p, const QRect &row,
@@ -669,25 +663,32 @@ void SettingsPage::paintToggleRow(QPainter &p, const QRect &row,
 
 void SettingsPage::paintActionBtn(QPainter &p, const QRect &r,
                                    bool hover, const QString &label,
-                                   const QColor &bg, const QColor &hoverBg) const {
+                                   const QColor &bg, const QColor &hoverBg,
+                                   bool lightText) const {
+    const QColor activeBg = hover ? hoverBg : bg;
     p.setPen(Qt::NoPen);
-    p.setBrush(hover ? hoverBg : bg);
+    p.setBrush(activeBg);
     p.drawRoundedRect(r, Theme::Space::RadiusS, Theme::Space::RadiusS);
     p.setFont(Fonts::medium(Theme::Font::SizeBody));
-    p.setPen(Qt::white);
+    p.setPen(lightText ? QColor(255,255,255) : Theme::Color::TextPrimary);
     p.drawText(r, Qt::AlignCenter, label);
 }
 
 void SettingsPage::paintPeersTab(QPainter &p, int tab,
                                   bool selected, bool hovered, const QRect &r) const {
-    QColor bg = selected ? Theme::Color::Accent
-              : hovered  ? kCardBorder.darker(110)
-              :             kCardBorder;
-    p.setPen(Qt::NoPen);
-    p.setBrush(bg);
-    p.drawRoundedRect(r, kTabH/2, kTabH/2);
-    p.setFont(Fonts::medium(Theme::Font::SizeBody));
-    p.setPen(selected ? Qt::white : Theme::Color::TextPrimary);
+    if (selected) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(26, 26, 26));
+        p.drawRoundedRect(r, kTabH/2, kTabH/2);
+        p.setFont(Fonts::medium(Theme::Font::SizeBody));
+        p.setPen(Qt::white);
+    } else {
+        p.setPen(QPen(hovered ? QColor(155,154,151) : kCardBorder, 1));
+        p.setBrush(hovered ? kSideHov : Qt::transparent);
+        p.drawRoundedRect(r, kTabH/2, kTabH/2);
+        p.setFont(Fonts::medium(Theme::Font::SizeBody));
+        p.setPen(Theme::Color::TextSecondary);
+    }
     p.drawText(r, Qt::AlignCenter, QString::fromUtf8(kTabLabels[tab]));
 }
 
@@ -814,10 +815,12 @@ void SettingsPage::paintHistory(QPainter &p) const {
     const int  btnY   = listTop + kHistH + kBtnGap;
     paintActionBtn(p, QRect(padX, btnY, kBtnW, kBtnH), m_histChkAllHover,
                    allChk ? QStringLiteral("Uncheck all") : QStringLiteral("Check all"),
-                   kCardBorder.darker(115), kCardBorder.darker(130));
+                   kCardBorder, kSideHov, false);
     paintActionBtn(p, QRect(padX + kBtnW + kBtnGap, btnY, kBtnW, kBtnH),
                    m_histDelHover && hasChk, QStringLiteral("Delete"),
-                   hasChk ? QColor(210,55,55) : kCardBorder, QColor(180,35,35));
+                   hasChk ? QColor(195,55,50) : kCardBorder,
+                   hasChk ? QColor(170,35,30) : kSideHov,
+                   hasChk);
 }
 
 void SettingsPage::paintPeers(QPainter &p) const {
@@ -849,10 +852,12 @@ void SettingsPage::paintPeers(QPainter &p) const {
                                :                              QStringLiteral("Unblock");
     paintActionBtn(p, QRect(padX, btnY, kBtnW, kBtnH), m_peersChkAllHov,
                    allChk ? QStringLiteral("Uncheck all") : QStringLiteral("Check all"),
-                   kCardBorder.darker(115), kCardBorder.darker(130));
+                   kCardBorder, kSideHov, false);
     paintActionBtn(p, QRect(padX + kBtnW + kBtnGap, btnY, kBtnW, kBtnH),
                    m_peersRemoveHov && hasChk, removeLabel,
-                   hasChk ? QColor(210,55,55) : kCardBorder, QColor(180,35,35));
+                   hasChk ? QColor(195,55,50) : kCardBorder,
+                   hasChk ? QColor(170,35,30) : kSideHov,
+                   hasChk);
 }
 
 void SettingsPage::paintAbout(QPainter &p) const {
@@ -887,8 +892,11 @@ void SettingsPage::paintSidebar(QPainter &p) const {
 
         if (sel) {
             p.setPen(Qt::NoPen);
-            p.setBrush(kSideSel);
+            p.setBrush(Theme::Color::ItemSelected);
             p.drawRect(r);
+            // Left indicator stripe
+            p.setBrush(QColor(26, 26, 26, 200));
+            p.drawRect(QRect(r.left(), r.top() + 8, 3, r.height() - 16));
         } else if (hov) {
             p.setPen(Qt::NoPen);
             p.setBrush(kSideHov);
@@ -896,7 +904,7 @@ void SettingsPage::paintSidebar(QPainter &p) const {
         }
 
         p.setFont(Fonts::regular(Theme::Font::SizeCaption));
-        p.setPen(sel ? Qt::white : Theme::Color::TextPrimary);
+        p.setPen(sel ? Theme::Color::TextPrimary : Theme::Color::TextSecondary);
         p.drawText(r.adjusted(16, 0, 0, 0), Qt::AlignVCenter|Qt::AlignLeft,
                    QString::fromUtf8(kCatLabels[c]));
     }
