@@ -1,0 +1,60 @@
+# Build output
+build/
+out/
+cmake-build-*/
+*.ninja
+.ninja_deps
+.ninja_log
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+_deps/
+
+# Qt generated
+*.autogen/
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+
+# IDE / editor
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln.docinfo
+.vs/
+*.swp
+*.swo
+*~
+
+# Claude Code local config
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc dev scripts with local paths
+convert_icon.ps1
+
+# Project tooling config (not relevant to contributors)
+docs.yml

@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>send.svg</file>
+        <file>cooperate.svg</file>
+        <file>git.svg</file>
+        <file>settings.svg</file>
+        <file>icon.png</file>
+    </qresource>
+</RCC>
